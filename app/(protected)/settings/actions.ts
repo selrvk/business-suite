@@ -4,6 +4,7 @@ import { revalidatePath, updateTag } from "next/cache"
 import { guard, type Session } from "@/lib/auth"
 import { USERNAME_PATTERN, staffEmail } from "@/lib/config"
 import { dbMessage } from "@/lib/db"
+import { BUSY, loginLockout, passwordIsRight } from "@/lib/login"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 import type { ActionResult } from "@/lib/types"
 
@@ -51,17 +52,21 @@ export async function updateBusiness(input: BusinessInput): Promise<ActionResult
 
 const logoPrefix = (businessId: string) => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/branding/${businessId}/`
 
-/**
- * Saves (or clears, with null) the logo after the browser has uploaded it to
- * this business's folder in the "branding" bucket, then removes the old file.
- */
-export async function setLogo(url: string | null): Promise<ActionResult> {
-  const g = await guard({ admin: true, allowExpired: true })
-  if (!g.ok) return g
-  const { supabase, business } = g.session
-  const prefix = logoPrefix(business.id)
-  if (url !== null && !url.startsWith(prefix)) return { ok: false, error: "That logo wasn't uploaded here." }
+const LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }
 
+/** Checks the file's first bytes, so a renamed non-image can't pass as a logo. */
+function isImage(bytes: Uint8Array, type: string) {
+  const starts = (sig: number[], at = 0) => sig.every((b, i) => bytes[at + i] === b)
+  if (type === "image/png") return starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  if (type === "image/jpeg") return starts([0xff, 0xd8, 0xff])
+  if (type === "image/webp") return starts([0x52, 0x49, 0x46, 0x46]) && starts([0x57, 0x45, 0x42, 0x50], 8) // RIFF....WEBP
+  return false
+}
+
+/** Points the business at a new logo (or none), then removes the old file. */
+async function saveLogo(session: Session, url: string | null): Promise<ActionResult> {
+  const { supabase, business } = session
+  const prefix = logoPrefix(business.id)
   const { error } = await supabase.from("businesses").update({ logo_url: url }).eq("id", business.id)
   if (error) return { ok: false, error: dbMessage(error) }
 
@@ -70,6 +75,71 @@ export async function setLogo(url: string | null): Promise<ActionResult> {
     await supabase.storage.from("branding").remove([`${business.id}/${previous.slice(prefix.length)}`])
   }
   refresh()
+  return { ok: true, data: null }
+}
+
+/**
+ * Uploads a logo (already shrunk by the browser) into this business's folder
+ * in the "branding" bucket and makes it the logo. Returns its public address.
+ */
+export async function uploadLogo(form: FormData): Promise<ActionResult<string>> {
+  const g = await guard({ admin: true, allowExpired: true })
+  if (!g.ok) return g
+  const file = form.get("logo")
+  if (!(file instanceof Blob)) return { ok: false, error: "Pick an image." }
+  const ext = LOGO_TYPES[file.type]
+  if (!ext) return { ok: false, error: "Use a PNG, JPG or WebP image." }
+  if (file.size > 2 * 1024 * 1024) return { ok: false, error: "That image is too big. Try a smaller one." }
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  if (!isImage(bytes, file.type)) return { ok: false, error: "That file isn't a working image." }
+
+  const { supabase, business } = g.session
+  const bucket = supabase.storage.from("branding")
+  const path = `${business.id}/logo-${Date.now()}.${ext}`
+  const { error } = await bucket.upload(path, bytes, { contentType: file.type, cacheControl: "31536000" })
+  if (error) {
+    return {
+      ok: false,
+      error: /bucket not found/i.test(error.message) ? "Logo storage isn't set up yet. Run supabase/schema.sql again." : error.message,
+    }
+  }
+  const url = bucket.getPublicUrl(path).data.publicUrl
+  const saved = await saveLogo(g.session, url)
+  if (!saved.ok) {
+    await bucket.remove([path])
+    return saved
+  }
+  return { ok: true, data: url }
+}
+
+export async function removeLogo(): Promise<ActionResult> {
+  const g = await guard({ admin: true, allowExpired: true })
+  if (!g.ok) return g
+  return saveLogo(g.session, null)
+}
+
+/**
+ * Changes your own password. Asks for the current one first (so someone using
+ * a computer you left logged in can't lock you out), counts wrong tries like a
+ * login, and logs you out everywhere else.
+ */
+export async function changePassword(current: string, next: string): Promise<ActionResult> {
+  const g = await guard({ allowExpired: true })
+  if (!g.ok) return g
+  if (next.length < 8) return { ok: false, error: "Password must be at least 8 characters." }
+  if (next === current) return { ok: false, error: "Pick a new password that's different from your current one." }
+
+  const { supabase, email } = g.session
+  const lockout = await loginLockout(email)
+  if (lockout.paused) return { ok: false, error: lockout.paused }
+  const check = await passwordIsRight(email, current)
+  if (check === "busy") return { ok: false, error: BUSY }
+  if (check === "wrong") return { ok: false, error: (await lockout.failed()) ?? "Your current password is wrong." }
+  await lockout.succeeded()
+
+  const { error } = await supabase.auth.updateUser({ password: next })
+  if (error) return { ok: false, error: error.message }
+  await supabase.auth.signOut({ scope: "others" })
   return { ok: true, data: null }
 }
 

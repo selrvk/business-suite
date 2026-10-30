@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { COOKIE_OPTIONS } from "@/lib/supabase/cookies"
 
 // Runs before every page request and keeps the Supabase login fresh, so staff
 // don't get randomly logged out. getSession() only contacts Supabase when the
@@ -9,6 +10,7 @@ export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    cookieOptions: COOKIE_OPTIONS,
     cookies: {
       getAll() {
         return request.cookies.getAll()

@@ -4,11 +4,10 @@ import { useRef, useState } from "react"
 import { Check, Copy, ImageUp, KeyRound, ShieldCheck, ShieldOff, Trash2, UserPlus } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
 import { ConfirmButton, Modal } from "@/components/modal"
-import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { formatDate } from "@/lib/format"
 import { shrinkImage } from "@/lib/image"
 import type { Business, Role } from "@/lib/types"
-import { addUser, removeUser, resetPassword, setAdmin, setLogo, updateBusiness } from "./actions"
+import { addUser, changePassword, removeLogo, removeUser, resetPassword, setAdmin, updateBusiness, uploadLogo } from "./actions"
 
 function useStatus() {
   const [busy, setBusy] = useState(false)
@@ -83,7 +82,7 @@ export function BusinessForm({ business }: { business: Business }) {
           </button>
         </div>
       </div>
-      <LogoField businessId={business.id} name={name} logo={logo} onChange={setLogoUrl} />
+      <LogoField name={name} logo={logo} onChange={setLogoUrl} />
     </form>
   )
 }
@@ -91,7 +90,7 @@ export function BusinessForm({ business }: { business: Business }) {
 const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"]
 
 /** Logo preview with upload (click or drag a file onto it) and remove. Saves immediately. */
-function LogoField({ businessId, name, logo, onChange }: { businessId: string; name: string; logo: string; onChange: (url: string) => void }) {
+function LogoField({ name, logo, onChange }: { name: string; logo: string; onChange: (url: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -104,22 +103,11 @@ function LogoField({ businessId, name, logo, onChange }: { businessId: string; n
     setBusy(true)
     try {
       const image = await shrinkImage(file, 512)
-      const path = `${businessId}/logo-${Date.now()}.${image.type === "image/webp" ? "webp" : "png"}`
-      const bucket = createSupabaseBrowserClient().storage.from("branding")
-      const { error: uploadError } = await bucket.upload(path, image, { contentType: image.type, cacheControl: "31536000" })
-      if (uploadError) {
-        throw new Error(
-          /bucket not found/i.test(uploadError.message)
-            ? "Logo storage isn't set up yet. Run supabase/schema.sql again."
-            : /row-level security|unauthorized/i.test(uploadError.message)
-              ? "Only an admin can change the logo."
-              : uploadError.message,
-        )
-      }
-      const url = bucket.getPublicUrl(path).data.publicUrl
-      const result = await setLogo(url)
+      const form = new FormData()
+      form.set("logo", image, `logo.${image.type === "image/webp" ? "webp" : "png"}`)
+      const result = await uploadLogo(form)
       if (!result.ok) throw new Error(result.error)
-      onChange(url)
+      onChange(result.data)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.")
     } finally {
@@ -131,7 +119,7 @@ function LogoField({ businessId, name, logo, onChange }: { businessId: string; n
   async function remove() {
     setBusy(true)
     setError(null)
-    const result = await setLogo(null)
+    const result = await removeLogo()
     setBusy(false)
     if (!result.ok) return setError(result.error)
     onChange("")
@@ -327,17 +315,18 @@ export function PasswordForm() {
     const formEl = e.currentTarget
     const form = new FormData(formEl)
     const password = String(form.get("password"))
-    if (password !== String(form.get("confirm"))) return setStatus({ ok: false, text: "The two passwords don't match." })
+    if (password !== String(form.get("confirm"))) return setStatus({ ok: false, text: "The two new passwords don't match." })
     setBusy(true)
-    const { error } = await createSupabaseBrowserClient().auth.updateUser({ password })
+    const result = await changePassword(String(form.get("current")), password)
     setBusy(false)
-    if (error) return setStatus({ ok: false, text: error.message })
-    setStatus({ ok: true, text: "Password updated." })
+    if (!result.ok) return setStatus({ ok: false, text: result.error })
+    setStatus({ ok: true, text: "Password updated. Any other devices using this login were logged out." })
     formEl.reset()
   }
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 max-w-sm">
       <Status status={status} />
+      <input className="input" name="current" type="password" required placeholder="Current password" autoComplete="current-password" />
       <input className="input" name="password" type="password" minLength={8} required placeholder="New password" autoComplete="new-password" />
       <input className="input" name="confirm" type="password" minLength={8} required placeholder="Type it again" autoComplete="new-password" />
       <button className="btn btn-secondary self-start" disabled={busy}>

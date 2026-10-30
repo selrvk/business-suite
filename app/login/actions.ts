@@ -4,11 +4,10 @@ import { updateTag } from "next/cache"
 import { getClaims, getSession, isPlatformEmail } from "@/lib/auth"
 import { config } from "@/lib/config"
 import { dbMessage } from "@/lib/db"
-import { createSupabaseAdminClient } from "@/lib/supabase/admin"
+import { BUSY, loginLockout, passwordSignIn, staffLoginEmail, WRONG_PASSWORD } from "@/lib/login"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { createBusinessFor } from "@/lib/tenancy"
 import type { ActionResult } from "@/lib/types"
-import { staffSignIn } from "../s/[slug]/actions"
 
 /**
  * The main login box takes either a real email, or a username with the
@@ -25,22 +24,40 @@ export async function signIn(login: string, password: string): Promise<ActionRes
     }
   }
 
-  const supabase = await createSupabaseServerClient()
+  const lockout = await loginLockout(id)
+  if (lockout.paused) return { ok: false, error: lockout.paused }
+  let busy = false
+
   if (id.includes(".", id.indexOf("@"))) {
-    const { error } = await supabase.auth.signInWithPassword({ email: id, password })
-    if (!error) return { ok: true, data: { to: isPlatformEmail(id) ? "/platform" : "/dashboard" } }
+    const result = await passwordSignIn(id, password)
+    if (result === "ok") {
+      await lockout.succeeded()
+      return { ok: true, data: { to: isPlatformEmail(id) ? "/platform" : "/dashboard" } }
+    }
+    busy = result === "busy"
   }
 
   const [username, domain] = id.split("@")
   const slug = domain.split(".")[0]
-  if (username && /^[a-z0-9-]{1,60}$/.test(slug)) {
-    const { data: business } = await createSupabaseAdminClient().from("businesses").select("slug").eq("slug", slug).maybeSingle()
-    if (business) {
-      const result = await staffSignIn(business.slug, username, password)
-      if (result.ok) return { ok: true, data: { to: "/dashboard" } }
+  if (!busy && username && /^[a-z0-9-]{1,60}$/.test(slug)) {
+    const email = await staffLoginEmail(slug, username)
+    if (email && email !== id) {
+      const result = await passwordSignIn(email, password)
+      if (result === "ok") {
+        await lockout.succeeded()
+        return { ok: true, data: { to: "/dashboard" } }
+      }
+      busy = result === "busy"
     }
   }
-  return { ok: false, error: "Wrong login or password." }
+
+  if (busy) return { ok: false, error: BUSY }
+  return { ok: false, error: (await lockout.failed()) ?? WRONG_PASSWORD }
+}
+
+/** Logs out this browser only; other devices using the same login stay logged in. */
+export async function signOut(): Promise<void> {
+  await (await createSupabaseServerClient()).auth.signOut({ scope: "local" })
 }
 
 /** For a signed-in login that somehow has no business: create one and make them its owner. */

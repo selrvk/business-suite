@@ -759,6 +759,70 @@ create index if not exists payment_requests_status_idx on public.payment_request
 
 
 -- -----------------------------------------------------------------------------
+-- Login lockout
+--
+-- Counts wrong passwords so nobody can keep guessing. The app's server checks
+-- it before every login (lib/login.ts); nobody else can read or call it.
+-- Keys are hashes, never raw logins or IP addresses.
+-- -----------------------------------------------------------------------------
+
+create table if not exists public.login_failures (
+  key text primary key,
+  failures int not null default 0,
+  window_start timestamptz not null default now(),
+  locked_until timestamptz
+);
+
+-- When the latest lock among these keys ends, or null if none is locked.
+create or replace function public.login_locked(p_keys text[])
+returns timestamptz
+language sql
+stable
+set search_path = public
+as $$
+  select max(locked_until) from login_failures where key = any (p_keys) and locked_until > now();
+$$;
+
+-- Counts one wrong password against each key. A key that reaches its limit
+-- within the window is locked for one window. Returns login_locked(p_keys).
+create or replace function public.login_failed(p_keys text[], p_limits int[], p_window_minutes int)
+returns timestamptz
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_window interval := make_interval(mins => p_window_minutes);
+begin
+  delete from login_failures
+  where window_start < now() - interval '1 day' and (locked_until is null or locked_until < now());
+
+  for i in 1 .. coalesce(array_length(p_keys, 1), 0) loop
+    insert into login_failures as f (key, failures, window_start)
+    values (p_keys[i], 1, now())
+    on conflict (key) do update
+      set failures = case when f.window_start < now() - v_window then 1 else f.failures + 1 end,
+          window_start = case when f.window_start < now() - v_window then now() else f.window_start end;
+
+    update login_failures
+    set locked_until = now() + v_window
+    where key = p_keys[i] and failures >= p_limits[i] and (locked_until is null or locked_until <= now());
+  end loop;
+
+  return public.login_locked(p_keys);
+end;
+$$;
+
+-- Clears one key after a right password.
+create or replace function public.login_succeeded(p_key text)
+returns void
+language sql
+set search_path = public
+as $$
+  delete from login_failures where key = p_key;
+$$;
+
+
+-- -----------------------------------------------------------------------------
 -- Permissions
 --
 -- Nobody gets in without logging in, and everyone only sees their own
@@ -878,6 +942,15 @@ create policy "payment_requests: insert" on public.payment_requests for insert t
 -- Functions: logged-in users only.
 revoke execute on all functions in schema public from public, anon;
 grant execute on all functions in schema public to authenticated;
+
+-- The login lockout is for the app's server (service role) only.
+alter table public.login_failures enable row level security;
+revoke all on public.login_failures from anon, authenticated;
+grant select, insert, update, delete on public.login_failures to service_role;
+revoke execute on function public.login_locked(text[]), public.login_failed(text[], int[], int), public.login_succeeded(text)
+  from public, anon, authenticated;
+grant execute on function public.login_locked(text[]), public.login_failed(text[], int[], int), public.login_succeeded(text)
+  to service_role;
 
 
 -- -----------------------------------------------------------------------------

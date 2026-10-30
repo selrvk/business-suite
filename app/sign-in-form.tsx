@@ -3,9 +3,8 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { LogIn, LogOut } from "lucide-react"
-import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { staffSignIn } from "./s/[slug]/actions"
-import { signIn } from "./login/actions"
+import { signIn, signOut } from "./login/actions"
 
 /**
  * Owners log in with their email; staff log in with a username on their
@@ -77,7 +76,7 @@ export function SignOutButton({ className = "btn btn-secondary btn-block" }: { c
     <button
       className={className}
       onClick={async () => {
-        await createSupabaseBrowserClient().auth.signOut()
+        await signOut()
         router.push("/login")
         router.refresh()
       }}
