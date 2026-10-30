@@ -1,0 +1,372 @@
+"use client"
+
+import { useRef, useState } from "react"
+import { Check, Copy, ImageUp, KeyRound, ShieldCheck, ShieldOff, Trash2, UserPlus } from "lucide-react"
+import { BrandMark } from "@/components/brand-mark"
+import { ConfirmButton, Modal } from "@/components/modal"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+import { formatDate } from "@/lib/format"
+import { shrinkImage } from "@/lib/image"
+import type { Business, Role } from "@/lib/types"
+import { addUser, removeUser, resetPassword, setAdmin, setLogo, updateBusiness } from "./actions"
+
+function useStatus() {
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
+  return { busy, setBusy, status, setStatus }
+}
+
+function Status({ status }: { status: { ok: boolean; text: string } | null }) {
+  if (!status) return null
+  return <p className={`alert ${status.ok ? "alert-success" : "alert-error"}`}>{status.text}</p>
+}
+
+export function BusinessForm({ business }: { business: Business }) {
+  const { busy, setBusy, status, setStatus } = useStatus()
+  const [name, setName] = useState(business.name)
+  const [logo, setLogoUrl] = useState(business.logo_url ?? "")
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    setBusy(true)
+    const result = await updateBusiness({
+      name,
+      address: String(form.get("address")),
+      contact: String(form.get("contact")),
+      receipt_footer: String(form.get("receipt_footer")),
+      low_stock_threshold: Number(form.get("low_stock_threshold")),
+      slug: String(form.get("slug")),
+    })
+    setBusy(false)
+    setStatus(result.ok ? { ok: true, text: "Saved." } : { ok: false, text: result.error })
+  }
+
+  return (
+    <form onSubmit={submit} className="grid gap-4 md:grid-cols-[1fr_200px]">
+      <div className="flex flex-col gap-4">
+        <Status status={status} />
+        <label>
+          <span className="label">Business name</span>
+          <input className="input" value={name} onChange={e => setName(e.target.value)} required maxLength={80} />
+        </label>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label>
+            <span className="label">Address</span>
+            <input className="input" name="address" defaultValue={business.address ?? ""} placeholder="Shown on receipts" />
+          </label>
+          <label>
+            <span className="label">Contact</span>
+            <input className="input" name="contact" defaultValue={business.contact ?? ""} placeholder="Phone or email" />
+          </label>
+        </div>
+        <label>
+          <span className="label">Receipt footer</span>
+          <input className="input" name="receipt_footer" defaultValue={business.receipt_footer ?? ""} placeholder="e.g. Thank you! No returns after 7 days." />
+        </label>
+        <label>
+          <span className="label">Staff login link</span>
+          <span className="flex items-center gap-2">
+            <span className="text-sm faint mono shrink-0">/s/</span>
+            <input className="input mono" name="slug" defaultValue={business.slug} required minLength={2} maxLength={40} pattern="[a-z0-9]+(-[a-z0-9]+)*" />
+          </span>
+          <span className="hint">Changing it changes the link your staff bookmark. Their usernames and passwords stay the same.</span>
+        </label>
+        <label className="max-w-xs">
+          <span className="label">Low-stock level</span>
+          <input className="input" name="low_stock_threshold" type="number" min={0} defaultValue={business.low_stock_threshold} required />
+          <span className="hint">Products at or below this count are flagged.</span>
+        </label>
+        <div>
+          <button className="btn btn-primary" disabled={busy}>
+            {busy ? "Saving…" : "Save business details"}
+          </button>
+        </div>
+      </div>
+      <LogoField businessId={business.id} name={name} logo={logo} onChange={setLogoUrl} />
+    </form>
+  )
+}
+
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"]
+
+/** Logo preview with upload (click or drag a file onto it) and remove. Saves immediately. */
+function LogoField({ businessId, name, logo, onChange }: { businessId: string; name: string; logo: string; onChange: (url: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function upload(file: File) {
+    setError(null)
+    if (!LOGO_TYPES.includes(file.type)) return setError("Use a PNG, JPG or WebP image.")
+    if (file.size > 10 * 1024 * 1024) return setError("That image is over 10 MB. Try a smaller one.")
+    setBusy(true)
+    try {
+      const image = await shrinkImage(file, 512)
+      const path = `${businessId}/logo-${Date.now()}.${image.type === "image/webp" ? "webp" : "png"}`
+      const bucket = createSupabaseBrowserClient().storage.from("branding")
+      const { error: uploadError } = await bucket.upload(path, image, { contentType: image.type, cacheControl: "31536000" })
+      if (uploadError) {
+        throw new Error(
+          /bucket not found/i.test(uploadError.message)
+            ? "Logo storage isn't set up yet. Run supabase/schema.sql again."
+            : /row-level security|unauthorized/i.test(uploadError.message)
+              ? "Only an admin can change the logo."
+              : uploadError.message,
+        )
+      }
+      const url = bucket.getPublicUrl(path).data.publicUrl
+      const result = await setLogo(url)
+      if (!result.ok) throw new Error(result.error)
+      onChange(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed.")
+    } finally {
+      setBusy(false)
+      if (inputRef.current) inputRef.current.value = ""
+    }
+  }
+
+  async function remove() {
+    setBusy(true)
+    setError(null)
+    const result = await setLogo(null)
+    setBusy(false)
+    if (!result.ok) return setError(result.error)
+    onChange("")
+  }
+
+  return (
+    <div
+      className="flex flex-col items-center justify-center gap-3 rounded-xl p-5 text-center border-2 border-dashed transition-colors"
+      style={{ background: "var(--app-bg)", borderColor: dragging ? "var(--brand)" : "transparent" }}
+      onDragOver={e => {
+        e.preventDefault()
+        setDragging(true)
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={e => {
+        e.preventDefault()
+        setDragging(false)
+        const file = e.dataTransfer.files[0]
+        if (file) upload(file)
+      }}
+    >
+      <BrandMark name={name || "?"} logoUrl={logo || null} size={64} />
+      <p className="display text-xl text-white">{name || "Your business"}</p>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={LOGO_TYPES.join(",")}
+        hidden
+        onChange={e => {
+          const file = e.target.files?.[0]
+          if (file) upload(file)
+        }}
+      />
+      <div className="flex flex-wrap justify-center gap-1.5">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => inputRef.current?.click()} disabled={busy}>
+          <ImageUp size={13} /> {busy ? "Saving…" : logo ? "Change logo" : "Upload logo"}
+        </button>
+        {logo && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={remove} disabled={busy}>
+            Remove
+          </button>
+        )}
+      </div>
+      {error ? <p className="text-xs text-bad">{error}</p> : <p className="text-[0.65rem] faint">PNG, JPG or WebP. Or drag it here.</p>}
+    </div>
+  )
+}
+
+export type UserRow = { user_id: string; username: string; role: Role; created_at: string }
+
+export function Users({ users, currentUserId, slug, staffLink }: { users: UserRow[]; currentUserId: string; slug: string; staffLink: string }) {
+  const { busy, setBusy, status, setStatus } = useStatus()
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [resetting, setResetting] = useState<UserRow | null>(null)
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const formEl = e.currentTarget
+    const form = new FormData(formEl)
+    setBusy(true)
+    const result = await addUser({ username: String(form.get("username")), password: String(form.get("password")), isAdmin })
+    setBusy(false)
+    if (!result.ok) return setStatus({ ok: false, text: result.error })
+    const name = String(form.get("username")).trim().toLowerCase()
+    setStatus({
+      ok: true,
+      text: `${name} can log in now: at ${staffLink} with the username "${name}", or on the main login page as "${name}@${slug}".`,
+    })
+    formEl.reset()
+    setIsAdmin(false)
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <p className="label">Add a login</p>
+        <Status status={status} />
+        <label>
+          <span className="label">Username</span>
+          <input className="input" name="username" required placeholder="e.g. jdelacruz" autoCapitalize="none" autoComplete="off" />
+        </label>
+        <label>
+          <span className="label">Password</span>
+          <input className="input" name="password" type="password" required minLength={8} placeholder="At least 8 characters" autoComplete="new-password" />
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} />
+          <span>
+            <span className="block text-sm font-semibold text-white">Admin</span>
+            <span className="block text-xs faint">Can manage users, employees, vehicles and settings, delete records, and fix timesheets.</span>
+          </span>
+        </label>
+        <button className="btn btn-primary self-start" disabled={busy}>
+          <UserPlus size={14} /> {busy ? "Creating…" : "Add user"}
+        </button>
+        <p className="text-xs faint">
+          Staff use their username at your staff login link (above). People who only clock in with a badge don&apos;t need a login;
+          add them under Employees.
+        </p>
+      </form>
+
+      <div>
+        <p className="label">Current users</p>
+        <div className="flex flex-col">
+          {users.map(u => {
+            const me = u.user_id === currentUserId
+            const isAdmin = u.role !== "staff"
+            return (
+              <div key={u.user_id} className="list-row">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">
+                    {u.username} {me && <span className="faint font-normal">(you)</span>}
+                  </p>
+                  <p className="text-xs faint">
+                    Logs in as <span className="mono muted">{u.username}@{slug}</span> · since {formatDate(u.created_at)}
+                  </p>
+                </div>
+                <span className="pill" data-tone={u.role === "owner" ? "brand" : isAdmin ? "info" : undefined}>
+                  {u.role === "owner" ? "Owner" : isAdmin ? "Admin" : "Staff"}
+                </span>
+                {!me && u.role !== "owner" && (
+                  <span className="flex">
+                    <button className="btn btn-ghost btn-icon" title="Reset password" onClick={() => setResetting(u)}>
+                      <KeyRound size={14} />
+                    </button>
+                    <ConfirmButton
+                      className="btn btn-ghost btn-icon"
+                      title={isAdmin ? `Make ${u.username} staff?` : `Make ${u.username} an admin?`}
+                      message={isAdmin ? "They'll lose admin powers." : "They'll be able to manage users, delete records and change settings."}
+                      confirmLabel={isAdmin ? "Make staff" : "Make admin"}
+                      danger={isAdmin}
+                      action={() => setAdmin(u.user_id, !isAdmin)}
+                    >
+                      {isAdmin ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
+                    </ConfirmButton>
+                    <ConfirmButton
+                      className="btn btn-ghost btn-icon"
+                      title={`Remove ${u.username}?`}
+                      message="They won't be able to log in anymore. Their past sales and records stay."
+                      confirmLabel="Remove"
+                      action={() => removeUser(u.user_id)}
+                    >
+                      <Trash2 size={14} />
+                    </ConfirmButton>
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <Modal open={!!resetting} onClose={() => setResetting(null)} title="Reset password" width={400}>
+        {resetting && <ResetForm key={resetting.user_id} user={resetting} onClose={() => setResetting(null)} />}
+      </Modal>
+    </div>
+  )
+}
+
+function ResetForm({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const { busy, setBusy, status, setStatus } = useStatus()
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setBusy(true)
+    const result = await resetPassword(user.user_id, String(new FormData(e.currentTarget).get("password")))
+    setBusy(false)
+    if (!result.ok) return setStatus({ ok: false, text: result.error })
+    onClose()
+  }
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <p className="text-sm muted">
+        Set a new password for <span className="text-white font-semibold">{user.username}</span>, then tell them what it is.
+      </p>
+      <Status status={status} />
+      <input className="input" name="password" type="password" minLength={8} required autoFocus placeholder="New password" autoComplete="new-password" />
+      <div className="modal-footer">
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
+          Cancel
+        </button>
+        <button className="btn btn-primary" disabled={busy}>
+          {busy ? "Saving…" : "Set password"}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+export function PasswordForm() {
+  const { busy, setBusy, status, setStatus } = useStatus()
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const formEl = e.currentTarget
+    const form = new FormData(formEl)
+    const password = String(form.get("password"))
+    if (password !== String(form.get("confirm"))) return setStatus({ ok: false, text: "The two passwords don't match." })
+    setBusy(true)
+    const { error } = await createSupabaseBrowserClient().auth.updateUser({ password })
+    setBusy(false)
+    if (error) return setStatus({ ok: false, text: error.message })
+    setStatus({ ok: true, text: "Password updated." })
+    formEl.reset()
+  }
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4 max-w-sm">
+      <Status status={status} />
+      <input className="input" name="password" type="password" minLength={8} required placeholder="New password" autoComplete="new-password" />
+      <input className="input" name="confirm" type="password" minLength={8} required placeholder="Type it again" autoComplete="new-password" />
+      <button className="btn btn-secondary self-start" disabled={busy}>
+        <KeyRound size={14} /> {busy ? "Updating…" : "Change password"}
+      </button>
+    </form>
+  )
+}
+
+export function CopyLink({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="flex gap-2">
+      <input className="input mono text-sm" value={url} readOnly onFocus={e => e.target.select()} />
+      <button
+        type="button"
+        className="btn btn-secondary shrink-0"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(url)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          } catch {
+            // clipboard blocked; the box is selectable
+          }
+        }}
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  )
+}

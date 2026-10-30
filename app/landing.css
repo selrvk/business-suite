@@ -1,0 +1,224 @@
+/* Showcase site ("scanner and receipt"). Scoped with lp- so the app is unaffected. */
+
+.lp {
+  --laser: #ff2d3d;
+  --laser-soft: color-mix(in srgb, #ff2d3d 18%, transparent);
+  --paper: #f7f5ef;
+  --ink: #222222;
+  --ink-soft: #5c5a55;
+  overflow-x: clip;
+}
+
+/* ---- header: the scanner window, with a laser line along its bottom ---- */
+.lp-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--app-bg) 86%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--app-border);
+}
+.lp-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--laser) 20%, var(--laser) 80%, transparent);
+  opacity: 0.55;
+}
+
+/* ---- scroll indicator: a scan line filling across the top ---- */
+.lp-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 60;
+  background: var(--laser);
+  box-shadow: 0 0 10px var(--laser);
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  pointer-events: none;
+}
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .lp-progress {
+      animation: lp-fill linear both;
+      animation-timeline: scroll(root);
+    }
+  }
+}
+@keyframes lp-fill {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ---- buttons: a laser sweep on hover ---- */
+.lp-scan-btn {
+  position: relative;
+  overflow: hidden;
+}
+.lp-scan-btn::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -30%;
+  width: 2px;
+  background: var(--laser);
+  box-shadow: 0 0 10px 2px var(--laser);
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lp-scan-btn:hover::after {
+    animation: lp-sweep 0.6s ease-out;
+  }
+}
+@keyframes lp-sweep {
+  0% {
+    left: -2%;
+    opacity: 1;
+  }
+  100% {
+    left: 102%;
+    opacity: 0.6;
+  }
+}
+
+/* ---- hero scanner window ---- */
+.lp-window {
+  position: relative;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border-strong);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+}
+.lp-scanzone {
+  position: relative;
+  background: var(--paper);
+  border-radius: 10px;
+  padding: 18px 22px 12px;
+  overflow: hidden;
+}
+.lp-scanline {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 2px;
+  background: var(--laser);
+  box-shadow: 0 0 12px 3px var(--laser-soft), 0 0 4px var(--laser);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lp-scanline {
+    animation: lp-scan 2.4s ease-in-out infinite alternate;
+  }
+}
+@keyframes lp-scan {
+  from {
+    left: 6%;
+  }
+  to {
+    left: 94%;
+  }
+}
+
+/* ---- dividers ---- */
+.lp-barcode-divider {
+  display: block;
+  width: 100%;
+  height: 28px;
+  color: var(--app-border-strong);
+}
+.lp-perf {
+  border: 0;
+  border-top: 2px dotted currentColor;
+  opacity: 0.35;
+  margin: 0;
+}
+
+/* ---- "what you scan" chip ---- */
+.lp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--laser) 45%, transparent);
+  background: var(--laser-soft);
+}
+.lp-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--laser);
+  box-shadow: 0 0 6px var(--laser);
+}
+
+/* ---- thermal receipt (pricing, footer) ---- */
+.lp-receipt {
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  --zig: 14px;
+  mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--zig) 100%,
+    conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--zig) 100%;
+  mask-composite: intersect;
+}
+.lp-receipt .lp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.28rem 0;
+}
+.lp-receipt .lp-dots {
+  flex: 1;
+  border-bottom: 2px dotted rgba(0, 0, 0, 0.25);
+  transform: translateY(-0.35em);
+}
+.lp-torn {
+  --zig: 16px;
+  mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--zig) 100%;
+}
+
+/* ---- FAQ ---- */
+.lp-faq summary {
+  cursor: pointer;
+  list-style: none;
+}
+.lp-faq summary::-webkit-details-marker {
+  display: none;
+}
+.lp-faq summary::after {
+  content: "+";
+  float: right;
+  color: var(--laser);
+  font-weight: 700;
+}
+.lp-faq[open] summary::after {
+  content: "–";
+}
+
+/* ---- placeholders the owner must fill in before launch ---- */
+.lp-todo {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: #111;
+  background: #ffd84d;
+  border: 2px dashed #b38b00;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
