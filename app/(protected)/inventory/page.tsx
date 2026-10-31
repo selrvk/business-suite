@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { PackagePlus, Printer } from "lucide-react"
+import { FileUp, PackagePlus, Printer } from "lucide-react"
 import { DbError } from "@/components/db-error"
 import { ExportButton } from "@/components/export-button"
 import { PageHeader, Stat } from "@/components/page-header"
@@ -43,6 +43,11 @@ export default async function InventoryPage() {
     <>
       <PageHeader eyebrow="Inventory" title="Products" subtitle="Scan any product to find it. Scan an unknown barcode to add it.">
         <ExportButton rows={exportRows} filename={`inventory_${toYmd()}`} sheet="Inventory" />
+        {isAdmin && (
+          <Link href="/inventory/import" className="btn btn-secondary">
+            <FileUp size={14} /> Import
+          </Link>
+        )}
         <Link href="/print/labels/products" target="_blank" className="btn btn-secondary">
           <Printer size={14} /> Labels
         </Link>

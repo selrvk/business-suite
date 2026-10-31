@@ -3,7 +3,49 @@
 import { revalidatePath } from "next/cache"
 import { guard } from "@/lib/auth"
 import { dbMessage } from "@/lib/db"
+import { MAX_IMPORT_ROWS, cleanImportRow, duplicateProblems, rowProblem, type ImportRow } from "@/lib/product-import"
 import type { ActionResult, StockReason } from "@/lib/types"
+
+/**
+ * Saves rows from the import page, all or nothing. Owners/admins only. The
+ * rows are checked again here, since anything can be sent from a browser.
+ */
+export async function importProducts(
+  input: unknown[],
+  setStock: boolean,
+): Promise<ActionResult<{ added: number; updated: number; unchanged: number }>> {
+  const g = await guard({ admin: true })
+  if (!g.ok) return g
+  if (!Array.isArray(input) || input.length === 0) return { ok: false, error: "There's nothing to import." }
+  if (input.length > MAX_IMPORT_ROWS) return { ok: false, error: `Import up to ${MAX_IMPORT_ROWS.toLocaleString()} products at a time.` }
+
+  const rows: ImportRow[] = []
+  for (const value of input) {
+    const row = cleanImportRow(value)
+    if (!row) return { ok: false, error: "Some rows couldn't be read. Reload the page and try again." }
+    const problem = rowProblem(row)
+    if (problem) return { ok: false, error: `Row ${row.line}: ${problem}.` }
+    rows.push(row)
+  }
+  const clash = duplicateProblems(rows).entries().next().value
+  if (clash) return { ok: false, error: `Row ${rows[clash[0]].line}: ${clash[1]}.` }
+
+  const { data, error } = await g.session.supabase.rpc("import_items", {
+    p_rows: rows.map(r => ({
+      name: r.name,
+      barcode: r.barcode,
+      brand: r.brand,
+      unit: r.unit,
+      stock: r.stock,
+      price_buy: r.price_buy,
+      price_sell: r.price_sell,
+    })),
+    p_set_stock: setStock === true,
+  })
+  if (error) return { ok: false, error: dbMessage(error) }
+  refresh()
+  return { ok: true, data: data as { added: number; updated: number; unchanged: number } }
+}
 
 export type ProductInput = {
   name: string

@@ -530,6 +530,117 @@ begin
 end;
 $$;
 
+-- Imports products from a spreadsheet, all or nothing. The app checks the file
+-- and shows a preview first (lib/product-import.ts uses the same rules). Rows:
+--   [{ "barcode", "name", "brand", "unit", "price_buy", "price_sell", "stock" }]
+-- Anything but name may be null, meaning "leave the saved value alone".
+-- A row matches a saved product by barcode. A row with a new barcode whose name
+-- matches exactly one product without a barcode gives that product the barcode.
+-- A row without a barcode matches by name, which must then be unique.
+-- New products start with the row's stock (logged as opening stock); saved
+-- products' stock only changes with p_set_stock (logged as an adjustment).
+-- Returns { added, updated, unchanged }.
+create or replace function public.import_items(p_rows jsonb, p_set_stock boolean default false)
+returns json
+language plpgsql
+set search_path = public
+as $$
+declare
+  r jsonb;
+  v_id bigint;
+  v_count integer;
+  v_old integer;
+  v_name text;
+  v_barcode text;
+  v_brand text;
+  v_unit text;
+  v_buy numeric;
+  v_sell numeric;
+  v_stock integer;
+  v_changed boolean;
+  v_added integer := 0;
+  v_updated integer := 0;
+  v_unchanged integer := 0;
+begin
+  if jsonb_typeof(p_rows) is distinct from 'array' then
+    raise exception 'Expected a list of products';
+  end if;
+  if jsonb_array_length(p_rows) > 5000 then
+    raise exception 'Import up to 5,000 products at a time';
+  end if;
+
+  for r in select value from jsonb_array_elements(p_rows) loop
+    v_name := nullif(trim(r ->> 'name'), '');
+    v_barcode := nullif(trim(r ->> 'barcode'), '');
+    v_brand := nullif(trim(r ->> 'brand'), '');
+    v_unit := nullif(lower(trim(r ->> 'unit')), '');
+    v_buy := (r ->> 'price_buy')::numeric;
+    v_sell := (r ->> 'price_sell')::numeric;
+    v_stock := (r ->> 'stock')::integer;
+    if v_name is null then
+      raise exception 'Every product needs a name';
+    end if;
+    if v_stock < 0 or v_buy < 0 or v_sell < 0 then
+      raise exception '"%": stock and prices can''t be negative', v_name;
+    end if;
+
+    v_id := null;
+    if v_barcode is not null then
+      select id into v_id from items where barcode = v_barcode;
+      if v_id is null then
+        select count(*), min(id) into v_count, v_id from items where barcode is null and lower(trim(name)) = lower(v_name);
+        if v_count <> 1 then
+          v_id := null;
+        end if;
+      end if;
+    else
+      select count(*), min(id) into v_count, v_id from items where lower(trim(name)) = lower(v_name);
+      if v_count > 1 then
+        raise exception 'More than one product is named "%". Add the barcode to say which one.', v_name;
+      end if;
+    end if;
+
+    if v_id is null then
+      insert into items (barcode, name, brand, unit, price_buy, price_sell, current_stock)
+      values (v_barcode, v_name, v_brand, coalesce(v_unit, 'pieces'), coalesce(v_buy, 0), coalesce(v_sell, 0), 0)
+      returning id into v_id;
+      if coalesce(v_stock, 0) > 0 then
+        perform adjust_stock(v_id, v_stock, 'initial', 'Imported');
+      end if;
+      v_added := v_added + 1;
+    else
+      select current_stock into v_old from items where id = v_id for update;
+      update items
+      set barcode = coalesce(v_barcode, barcode),
+          name = v_name,
+          brand = coalesce(v_brand, brand),
+          unit = coalesce(v_unit, unit),
+          price_buy = coalesce(v_buy, price_buy),
+          price_sell = coalesce(v_sell, price_sell)
+      where id = v_id
+        and (barcode is distinct from coalesce(v_barcode, barcode)
+          or name is distinct from v_name
+          or brand is distinct from coalesce(v_brand, brand)
+          or unit is distinct from coalesce(v_unit, unit)
+          or price_buy is distinct from coalesce(v_buy, price_buy)
+          or price_sell is distinct from coalesce(v_sell, price_sell));
+      v_changed := found;
+      if p_set_stock and v_stock is not null and v_stock <> v_old then
+        perform adjust_stock(v_id, v_stock - v_old, 'adjust', 'Imported');
+        v_changed := true;
+      end if;
+      if v_changed then
+        v_updated := v_updated + 1;
+      else
+        v_unchanged := v_unchanged + 1;
+      end if;
+    end if;
+  end loop;
+
+  return json_build_object('added', v_added, 'updated', v_updated, 'unchanged', v_unchanged);
+end;
+$$;
+
 create or replace function public.sales_summary(p_from timestamptz, p_to timestamptz)
 returns json
 language sql
