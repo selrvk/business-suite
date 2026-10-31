@@ -51,13 +51,16 @@ async function loadMembership(supabase: Session["supabase"], userId: string): Pr
   return data as unknown as Membership | null
 }
 
-/** The signed-in user's verified id and email (from the login token), or null. */
+/**
+ * The signed-in user's verified id and email (from the login token), or null.
+ * twoStep is true once they've also entered an authenticator code this session.
+ */
 export const getClaims = cache(async () => {
   const supabase = await getSupabase()
   const { data, error } = await supabase.auth.getClaims()
   const claims = data?.claims
   if (error || !claims?.sub) return null
-  return { userId: claims.sub, email: String(claims.email ?? "").toLowerCase() }
+  return { userId: claims.sub, email: String(claims.email ?? "").toLowerCase(), twoStep: claims.aal === "aal2" }
 })
 
 /**
@@ -146,7 +149,8 @@ export async function guard(
 // ---------------------------------------------------------------------------
 // Platform admin: you, the owner of the whole site. Set PLATFORM_ADMIN_EMAILS
 // in .env. These logins don't belong to a business and have no trial; they
-// only manage the platform at /platform.
+// only manage the platform at /platform, and need two-step login: a password,
+// then a code from an authenticator app (see /platform/verify).
 // ---------------------------------------------------------------------------
 
 export function isPlatformEmail(email: string | null | undefined) {
@@ -158,11 +162,21 @@ export function isPlatformEmail(email: string | null | undefined) {
     .includes(email.trim().toLowerCase())
 }
 
-export async function isPlatformAdmin() {
+/** Logged in with a platform email (maybe not past the second step yet). For showing links. */
+export async function isPlatformLogin() {
   const claims = await getClaims()
   return isPlatformEmail(claims?.email)
 }
 
+/** Logged in with a platform email AND past the second step. Required to see or change anything. */
+export async function isPlatformAdmin() {
+  const claims = await getClaims()
+  return isPlatformEmail(claims?.email) && claims!.twoStep
+}
+
+/** For platform pages: 404 for everyone else, the code screen if the second step is missing. */
 export async function requirePlatformAdmin() {
-  if (!(await isPlatformAdmin())) notFound()
+  const claims = await getClaims()
+  if (!isPlatformEmail(claims?.email)) notFound()
+  if (!claims!.twoStep) redirect("/platform/verify")
 }

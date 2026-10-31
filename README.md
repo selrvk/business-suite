@@ -37,8 +37,25 @@ step.
 3. **Turn off public sign-ups in Supabase** (Authentication → Sign In / Providers → "Allow new users to sign up"). The app
    creates logins itself through `/signup`, so this blocks anyone from skipping it.
 4. **Set the environment variables** from [`.env.example`](.env.example). Set `PLATFORM_ADMIN_EMAILS` to your own email.
-5. **Deploy** (e.g. Vercel). Set the function region to Singapore too, so database calls stay fast.
-6. **Sign up with your own email.** You get a business to try things with, and the **Platform admin** link in the menu.
+5. **Deploy** (e.g. Vercel). Set the function region to the same region as your Supabase project, so database calls stay
+   fast.
+6. **Create your platform login** in Supabase (Authentication → Users → Add user → Create new user) with the email from
+   `PLATFORM_ADMIN_EMAILS`, a long unique password, and Auto Confirm ticked. Log in at `/login`; you'll be asked to set
+   up two-step login (below). This login manages the platform only; it has no business of its own.
+
+## Platform admin and two-step login
+
+`/platform` can see and delete every business, so it needs two steps: your password, then a 6-digit code from an
+authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, ...). The first login after deploying walks
+you through scanning a QR code. Save the key shown under the QR code in a password manager, so you can add the login to a
+new phone.
+
+**Lost your phone and the key?** Remove the authenticator in Supabase's SQL Editor, then log in and set it up again:
+
+```sql
+delete from auth.mfa_factors
+where user_id = (select id from auth.users where email = 'you@example.com');
+```
 
 ## Upgrading a database from the one-business version
 

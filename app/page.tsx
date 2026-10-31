@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { ArrowRight, Check } from "lucide-react"
 import { AppLogoMark } from "@/components/app-logo"
-import { getSession, isPlatformAdmin } from "@/lib/auth"
+import { getSession, isPlatformLogin } from "@/lib/auth"
 import { MODULE_INFO, config, hasModule, type ModuleKey } from "@/lib/config"
 import { price } from "@/lib/format"
 import { BarcodeDivider, FleetScreen, PaperBarcode, PosScreen, QuickScanScreen, TimeClockScreen } from "./landing-parts"
@@ -88,7 +88,7 @@ const FAQ: [string, React.ReactNode][] = [
 ]
 
 export default async function HomePage() {
-  const [session, platform] = await Promise.all([getSession(), isPlatformAdmin()])
+  const [session, platform] = await Promise.all([getSession(), isPlatformLogin()])
   const modules = MODULES.filter(m => hasModule(m.key))
   const yearly = config.price.yearly
   const yearlySaving = yearly ? Math.round((1 - yearly / (config.price.monthly * 12)) * 100) : 0

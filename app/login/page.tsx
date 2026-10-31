@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { AuthCard } from "@/components/auth-card"
-import { getClaims, getSession, isPlatformAdmin } from "@/lib/auth"
+import { getClaims, getSession, isPlatformLogin } from "@/lib/auth"
 import { config } from "@/lib/config"
 import { SETUP_MESSAGE, isMissingSchema } from "@/lib/db"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
@@ -23,7 +23,7 @@ export default async function LoginPage() {
 
   // Signed in, but the login has no business.
   if (claims) {
-    const [platform, missing] = await Promise.all([isPlatformAdmin(), schemaMissing()])
+    const [platform, missing] = await Promise.all([isPlatformLogin(), schemaMissing()])
     if (platform && !missing) redirect("/platform") // the platform owner has no business, by design
     const staff = claims.email.endsWith(`.${config.staffEmailDomain}`)
     return (

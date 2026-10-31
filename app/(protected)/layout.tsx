@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Nav from "@/components/nav"
-import { access, getSession, isPlatformAdmin, requireActive } from "@/lib/auth"
+import { access, getSession, isPlatformLogin, requireActive } from "@/lib/auth"
 import { formatDate } from "@/lib/format"
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -11,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const [session, platform] = await Promise.all([requireActive(), isPlatformAdmin()])
+  const [session, platform] = await Promise.all([requireActive(), isPlatformLogin()])
   const { onTrial, daysLeft, endsAt } = access(session.business)
 
   return (
