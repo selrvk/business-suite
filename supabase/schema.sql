@@ -923,6 +923,15 @@ begin
 end;
 $$;
 
+-- Emails already sent for something that should only be emailed once, like
+-- "your trial ends in 3 days" for a given end date. Server only.
+create table if not exists public.email_log (
+  business_id uuid not null references public.businesses (id) on delete cascade,
+  kind text not null,
+  sent_at timestamptz not null default now(),
+  primary key (business_id, kind)
+);
+
 -- Clears one key after a right password.
 create or replace function public.login_succeeded(p_key text)
 returns void
@@ -1062,6 +1071,11 @@ revoke execute on function public.login_locked(text[]), public.login_failed(text
   from public, anon, authenticated;
 grant execute on function public.login_locked(text[]), public.login_failed(text[], int[], int), public.login_succeeded(text)
   to service_role;
+
+-- So is the record of emails sent.
+alter table public.email_log enable row level security;
+revoke all on public.email_log from anon, authenticated;
+grant select, insert, delete on public.email_log to service_role;
 
 
 -- -----------------------------------------------------------------------------

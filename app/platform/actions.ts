@@ -1,8 +1,10 @@
 "use server"
 
 import { revalidatePath, updateTag } from "next/cache"
+import { after } from "next/server"
 import { isPlatformAdmin, isPlatformEmail } from "@/lib/auth"
 import { dayRange, isYmd } from "@/lib/format"
+import { notifyPaymentReviewed } from "@/lib/notify"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 import type { ActionResult } from "@/lib/types"
 
@@ -35,7 +37,7 @@ export async function approvePayment(id: number): Promise<ActionResult<string>> 
     .update({ status: "approved", reviewed_at: new Date().toISOString() })
     .eq("id", id)
     .eq("status", "pending")
-    .select("business_id, period")
+    .select("business_id, period, amount, reference")
     .maybeSingle()
   if (!request) return { ok: false, error: "That payment was already handled." }
 
@@ -49,18 +51,26 @@ export async function approvePayment(id: number): Promise<ActionResult<string>> 
     await admin.from("payment_requests").update({ status: "pending", reviewed_at: null }).eq("id", id)
     return { ok: false, error: error.message }
   }
+  after(() =>
+    notifyPaymentReviewed(request.business_id, { approved: true, amount: Number(request.amount), reference: request.reference, paidUntil }),
+  )
   refresh()
   return { ok: true, data: paidUntil }
 }
 
 export async function rejectPayment(id: number): Promise<ActionResult> {
   if (!(await isPlatformAdmin())) return NOT_ALLOWED
-  const { error } = await createSupabaseAdminClient()
+  const { data: request, error } = await createSupabaseAdminClient()
     .from("payment_requests")
     .update({ status: "rejected", reviewed_at: new Date().toISOString() })
     .eq("id", id)
     .eq("status", "pending")
+    .select("business_id, amount, reference")
+    .maybeSingle()
   if (error) return { ok: false, error: error.message }
+  if (request) {
+    after(() => notifyPaymentReviewed(request.business_id, { approved: false, amount: Number(request.amount), reference: request.reference }))
+  }
   refresh()
   return { ok: true, data: null }
 }

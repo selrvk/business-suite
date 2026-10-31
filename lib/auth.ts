@@ -51,16 +51,30 @@ async function loadMembership(supabase: Session["supabase"], userId: string): Pr
   return data as unknown as Membership | null
 }
 
+/** How long after opening a password reset link you can set a new password without the old one. */
+export const RESET_WINDOW_SECONDS = 30 * 60
+
+/** True within RESET_WINDOW_SECONDS of logging in through an emailed link. */
+export function linkLoginIsFresh(linkLoginAt: number, now = Date.now()) {
+  return now / 1000 - linkLoginAt <= RESET_WINDOW_SECONDS
+}
+
+/** Ways of logging in by clicking an emailed link (as opposed to a password). */
+const LINK_METHODS = ["recovery", "magiclink", "otp", "email/signup", "invite"]
+
 /**
  * The signed-in user's verified id and email (from the login token), or null.
  * twoStep is true once they've also entered an authenticator code this session.
+ * linkLoginAt is when they last logged in through an emailed link (Unix seconds, or 0).
  */
 export const getClaims = cache(async () => {
   const supabase = await getSupabase()
   const { data, error } = await supabase.auth.getClaims()
   const claims = data?.claims
   if (error || !claims?.sub) return null
-  return { userId: claims.sub, email: String(claims.email ?? "").toLowerCase(), twoStep: claims.aal === "aal2" }
+  const amr = (Array.isArray(claims.amr) ? claims.amr : []) as { method?: string; timestamp?: number }[]
+  const linkLoginAt = Math.max(0, ...amr.filter(a => LINK_METHODS.includes(a.method ?? "")).map(a => Number(a.timestamp) || 0))
+  return { userId: claims.sub, email: String(claims.email ?? "").toLowerCase(), twoStep: claims.aal === "aal2", linkLoginAt }
 })
 
 /**

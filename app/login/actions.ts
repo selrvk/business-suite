@@ -4,7 +4,7 @@ import { updateTag } from "next/cache"
 import { getClaims, getSession, isPlatformEmail } from "@/lib/auth"
 import { config } from "@/lib/config"
 import { dbMessage } from "@/lib/db"
-import { BUSY, loginLockout, passwordSignIn, staffLoginEmail, WRONG_PASSWORD } from "@/lib/login"
+import { BUSY, loginLockout, passwordSignIn, staffLoginEmail, unconfirmedMessage, WRONG_PASSWORD } from "@/lib/login"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { createBusinessFor } from "@/lib/tenancy"
 import type { ActionResult } from "@/lib/types"
@@ -34,6 +34,7 @@ export async function signIn(login: string, password: string): Promise<ActionRes
       await lockout.succeeded()
       return { ok: true, data: { to: isPlatformEmail(id) ? "/platform" : "/dashboard" } }
     }
+    if (result === "unconfirmed") return { ok: false, error: await unconfirmedMessage(id) }
     busy = result === "busy"
   }
 
@@ -47,6 +48,7 @@ export async function signIn(login: string, password: string): Promise<ActionRes
         await lockout.succeeded()
         return { ok: true, data: { to: "/dashboard" } }
       }
+      if (result === "unconfirmed") return { ok: false, error: await unconfirmedMessage(email) }
       busy = result === "busy"
     }
   }

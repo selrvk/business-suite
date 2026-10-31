@@ -57,6 +57,33 @@ delete from auth.mfa_factors
 where user_id = (select id from auth.users where email = 'you@example.com');
 ```
 
+## Email (optional, recommended)
+
+With email set up, the app sends:
+
+- **Owners:** a link to confirm their email when they sign up (they confirm before their first login), password reset links
+  (`/forgot-password`), payment approved/rejected notices, and a reminder 3 days before their trial or paid time ends and
+  on the day it ends.
+- **You:** a notice for every new sign-up and every payment to check.
+
+Without it, sign-ups log in straight away and owners who forget their password have to ask you. Staff logins have no
+email; their owner resets them in Settings.
+
+To set it up with [Resend](https://resend.com) (free for 3,000 emails a month):
+
+1. Sign up, then **Domains → Add domain**. Use a subdomain such as `mail.yourdomain.com`, so it can't clash with any email
+   your main domain already has. Add the DNS records Resend shows at your domain's DNS provider, then wait for
+   **Verified**.
+2. **API Keys → Create API key** with sending access.
+3. Set these environment variables (on Vercel: Settings → Environment Variables), then redeploy:
+   - `RESEND_API_KEY`: the key from step 2
+   - `EMAIL_FROM`: e.g. `Business Suite <no-reply@mail.yourdomain.com>` (must use the verified domain)
+   - `CRON_SECRET`: any long random text (`openssl rand -hex 32`); Vercel uses it to run the daily reminders
+     ([`vercel.json`](vercel.json))
+4. Test it: on `/forgot-password`, enter your own email.
+
+Replies to these emails go to `NEXT_PUBLIC_CONTACT_EMAIL`.
+
 ## Upgrading a database from the one-business version
 
 `schema.sql` notices the older layout and converts it in place, all or nothing:

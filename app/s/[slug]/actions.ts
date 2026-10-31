@@ -1,6 +1,6 @@
 "use server"
 
-import { BUSY, loginLockout, passwordSignIn, staffLoginEmail } from "@/lib/login"
+import { BUSY, loginLockout, passwordSignIn, staffLoginEmail, unconfirmedMessage } from "@/lib/login"
 import type { ActionResult } from "@/lib/types"
 
 const WRONG = "Wrong username or password."
@@ -23,6 +23,7 @@ export async function staffSignIn(slug: string, login: string, password: string)
     await lockout.succeeded()
     return { ok: true, data: null }
   }
+  if (result === "unconfirmed") return { ok: false, error: await unconfirmedMessage(email!) }
   if (result === "busy") return { ok: false, error: BUSY }
   return { ok: false, error: (await lockout.failed()) ?? WRONG }
 }

@@ -2,7 +2,9 @@ import "server-only"
 import { createHmac } from "node:crypto"
 import { headers } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
-import { USERNAME_PATTERN } from "./config"
+import { USERNAME_PATTERN, config } from "./config"
+import { emailEnabled } from "./email"
+import { sendLoginLink } from "./notify"
 import { createSupabaseAdminClient } from "./supabase/admin"
 import { createSupabaseServerClient } from "./supabase/server"
 
@@ -86,17 +88,33 @@ export async function loginLockout(login: string, slug?: string) {
   }
 }
 
-export type PasswordResult = "ok" | "wrong" | "busy"
+/**
+ * Allows something, like sending an email, a limited number of times per
+ * window: `perTarget` times for one target (e.g. one email address) and
+ * `perPlace` times from one IP address. Counts this try. Shares the lockout's
+ * table; if that's missing, everything is allowed.
+ */
+export async function allowAttempt(name: string, target: string, perTarget: number, perPlace: number, minutes = 60) {
+  const place = await clientPlace()
+  const keys = [hash(`${name}|${target.trim().toLowerCase()}`), hash(`${name}|place|${place}`)]
+  if (await call<string | null>("login_locked", { p_keys: keys })) return false
+  await call("login_failed", { p_keys: keys, p_limits: [perTarget, perPlace], p_window_minutes: minutes })
+  return true
+}
+
+/** "unconfirmed": the password is right, but the owner hasn't confirmed their email yet. */
+export type PasswordResult = "ok" | "wrong" | "busy" | "unconfirmed"
 
 /** Checks a password and, if it's right, signs this browser in. */
 export async function passwordSignIn(email: string, password: string): Promise<PasswordResult> {
   const { error } = await (await createSupabaseServerClient()).auth.signInWithPassword({ email, password })
   if (!error) return "ok"
+  if (error.code === "email_not_confirmed") return "unconfirmed"
   return error.status === 429 ? "busy" : "wrong"
 }
 
 /** Checks a password without touching this browser's login (e.g. before changing it). */
-export async function passwordIsRight(email: string, password: string): Promise<PasswordResult> {
+export async function passwordIsRight(email: string, password: string): Promise<"ok" | "wrong" | "busy"> {
   const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
@@ -104,6 +122,16 @@ export async function passwordIsRight(email: string, password: string): Promise<
   if (error) return error.status === 429 ? "busy" : "wrong"
   await client.auth.signOut({ scope: "local" }) // end the extra session this check created
   return "ok"
+}
+
+/**
+ * For a right password on an email that isn't confirmed yet: sends a fresh
+ * confirmation link (a few per hour at most) and says what to do.
+ */
+export async function unconfirmedMessage(email: string) {
+  if (!emailEnabled()) return `This email hasn't been confirmed yet. Write to ${config.contactEmail} for help.`
+  if (await allowAttempt("confirm-email", email, 3, 10)) await sendLoginLink(email, "confirm")
+  return `Confirm your email first: we've sent a link to ${email}. Open it to log in.`
 }
 
 /** The email behind a staff username, looked up on the server so it never reaches the browser. */

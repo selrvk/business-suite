@@ -584,6 +584,7 @@
     padding: 0.65rem 0.85rem;
     border-radius: 8px;
     border: 1px solid;
+    overflow-wrap: anywhere; /* long emails and links wrap instead of spilling out */
   }
   .alert-error {
     color: var(--app-danger);

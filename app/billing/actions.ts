@@ -1,9 +1,11 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 import { guard } from "@/lib/auth"
 import { config } from "@/lib/config"
 import { dbMessage } from "@/lib/db"
+import { notifyPaymentReport } from "@/lib/notify"
 import type { ActionResult } from "@/lib/types"
 
 /** The owner reports a payment (e.g. a GCash reference number) for you to approve. */
@@ -18,13 +20,11 @@ export async function submitPayment(input: { period: "month" | "year"; reference
   const { data: duplicate } = await supabase.from("payment_requests").select("id").eq("reference", reference).neq("status", "rejected").maybeSingle()
   if (duplicate) return { ok: false, error: "You've already sent this reference number. We'll confirm it soon." }
 
-  const { error } = await supabase.from("payment_requests").insert({
-    period: input.period,
-    amount: input.period === "year" && config.price.yearly ? config.price.yearly : config.price.monthly,
-    reference,
-    note: input.note.trim() || null,
-  })
+  const amount = input.period === "year" && config.price.yearly ? config.price.yearly : config.price.monthly
+  const note = input.note.trim() || null
+  const { error } = await supabase.from("payment_requests").insert({ period: input.period, amount, reference, note })
   if (error) return { ok: false, error: dbMessage(error) }
+  after(() => notifyPaymentReport({ businessName: g.session.business.name, amount, period: input.period, reference, note }))
   revalidatePath("/billing")
   return { ok: true, data: null }
 }

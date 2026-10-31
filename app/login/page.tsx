@@ -58,6 +58,10 @@ export default async function LoginPage() {
       subtitle="Your email, or your username with your business's link (username@your-business)"
       footer={
         <>
+          <Link href="/forgot-password" className="text-white underline decoration-dotted">
+            Forgot your password?
+          </Link>
+          <br />
           New here?{" "}
           <Link href="/signup" className="text-white underline decoration-dotted">
             Start a free trial
