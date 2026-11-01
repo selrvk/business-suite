@@ -13,7 +13,7 @@ export default async function SettingsPage() {
   const [session, h] = await Promise.all([requireUser(), headers()])
   const { supabase, isAdmin, userId, business, username, email } = session
   const { data: users } = isAdmin
-    ? await supabase.from("members").select("user_id, username, role, created_at").order("created_at")
+    ? await supabase.from("members").select("user_id, username, role, created_at, permissions").order("created_at")
     : { data: null }
 
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"

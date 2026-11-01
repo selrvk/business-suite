@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react"
 import { CalendarPlus, PackageCheck, Plus, Trash2 } from "lucide-react"
-import { useBusinessFeatures } from "@/components/business-features"
+import { useBusinessFeatures, useCan } from "@/components/business-features"
 import { ScanInput } from "@/components/scan-input"
 import { QtyInput, ScanSafeInput } from "@/components/qty-input"
 import { Empty } from "@/components/page-header"
@@ -19,6 +19,7 @@ let nextKey = 1
 
 export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: Item[]; suppliers?: { id: number; name: string }[] }) {
   const { options } = useBusinessFeatures()
+  const can = useCan()
   const withExpiry = options.includes("expiry")
   const withSuppliers = options.includes("suppliers")
   const [suppliers, setSuppliers] = useState(initialSuppliers)
@@ -128,7 +129,7 @@ export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: It
         {message && (
           <div className={`alert ${message.tone === "good" ? "alert-success" : message.tone === "bad" ? "alert-error" : "alert-warn"} flex flex-wrap items-center justify-between gap-2`}>
             <span>{message.text}</span>
-            {unknown && message.tone === "warn" && (
+            {unknown && message.tone === "warn" && can("edit_products") && (
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => {

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { Check, Copy, MessageSquare, PackageCheck, Printer } from "lucide-react"
+import { useCan } from "@/components/business-features"
 import { Empty } from "@/components/page-header"
 import { money, num } from "@/lib/format"
 
@@ -41,6 +42,7 @@ export function ReorderList({
   const [qty, setQty] = useState<Record<number, number>>(() => Object.fromEntries(items.map(i => [i.id, suggested(i, defaultLevel)])))
   const [skipped, setSkipped] = useState<Set<number>>(new Set())
   const [copied, setCopied] = useState<string | null>(null)
+  const showCost = useCan()("see_costs")
 
   const groups = useMemo(() => {
     const byId = new Map(suppliers.map(s => [s.id, s]))
@@ -96,7 +98,8 @@ export function ReorderList({
             <div className="card-header flex-wrap gap-2">
               <h2 className="display text-xl text-white">{group.name}</h2>
               <span className="text-xs faint">
-                {active.length} product{active.length === 1 ? "" : "s"} · about {money(total)} at cost
+                {active.length} product{active.length === 1 ? "" : "s"}
+                {showCost && ` · about ${money(total)} at cost`}
               </span>
               <span className="ml-auto flex gap-2 no-print">
                 {group.phone && (
@@ -118,7 +121,7 @@ export function ReorderList({
                     <th className="num">In stock</th>
                     <th className="num">Low at</th>
                     <th className="num">Order</th>
-                    <th className="num hidden sm:table-cell">Cost</th>
+                    {showCost && <th className="num hidden sm:table-cell">Cost</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -166,7 +169,7 @@ export function ReorderList({
                             <span className="faint text-xs">{i.unit}</span>
                           </span>
                         </td>
-                        <td className="num muted hidden sm:table-cell">{money((qty[i.id] ?? 0) * Number(i.price_buy))}</td>
+                        {showCost && <td className="num muted hidden sm:table-cell">{money((qty[i.id] ?? 0) * Number(i.price_buy))}</td>}
                       </tr>
                     )
                   })}

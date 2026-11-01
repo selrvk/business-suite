@@ -4,6 +4,8 @@ import { revalidatePath, updateTag } from "next/cache"
 import { guard, type Session } from "@/lib/auth"
 import { USERNAME_PATTERN, staffEmail } from "@/lib/config"
 import { dbMessage } from "@/lib/db"
+import { logActivity } from "@/lib/activity"
+import { ALL_PERMISSIONS, CASHIER, PERMISSION_INFO, type Permission } from "@/lib/permissions"
 import { cleanFeatures, type FeaturesInput } from "@/lib/features"
 import { BUSY, loginLockout, passwordIsRight } from "@/lib/login"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
@@ -22,6 +24,7 @@ export type BusinessInput = {
   receipt_footer: string
   receipt_note: string
   low_stock_threshold: number
+  vat_registered: boolean
 }
 
 export async function updateBusiness(input: BusinessInput): Promise<ActionResult> {
@@ -45,10 +48,13 @@ export async function updateBusiness(input: BusinessInput): Promise<ActionResult
       contact: input.contact.trim() || null,
       receipt_footer: input.receipt_footer.trim() || null,
       receipt_note: input.receipt_note.trim().slice(0, 200) || null,
+      vat_registered: input.vat_registered === true,
       low_stock_threshold: threshold,
     })
     .eq("id", business.id)
   if (error) return { ok: false, error: dbMessage(error) }
+  const changed = (["name", "slug", "low_stock_threshold", "vat_registered"] as const).filter(k => String(business[k]) !== String(k === "name" ? name : k === "slug" ? slug : k === "low_stock_threshold" ? threshold : input.vat_registered === true))
+  await logActivity(g.session, "business_changed", name, changed.length ? { changed } : {})
   refresh()
   return { ok: true, data: null }
 }
@@ -177,13 +183,15 @@ export async function addUser(input: { username: string; password: string; isAdm
   })
   if (error || !data.user) return { ok: false, error: error?.message ?? "Couldn't create the login." }
 
+  // New staff start as cashiers; the owner turns on more in Settings → Logins.
   const { error: memberError } = await admin
     .from("members")
-    .insert({ user_id: data.user.id, business_id: business.id, username, role: input.isAdmin ? "admin" : "staff" })
+    .insert({ user_id: data.user.id, business_id: business.id, username, role: input.isAdmin ? "admin" : "staff", permissions: CASHIER })
   if (memberError) {
     await admin.auth.admin.deleteUser(data.user.id)
     return { ok: false, error: dbMessage(memberError) }
   }
+  await logActivity(g.session, "staff_added", username, { role: input.isAdmin ? "admin" : "staff" })
   refresh()
   return { ok: true, data: null }
 }
@@ -197,6 +205,7 @@ export async function resetPassword(userId: string, password: string): Promise<A
   if (target.role === "owner") return { ok: false, error: "Only the owner can change the owner's password." }
   const { error } = await createSupabaseAdminClient().auth.admin.updateUserById(userId, { password })
   if (error) return { ok: false, error: error.message }
+  await logActivity(g.session, "password_reset", target.username)
   return { ok: true, data: null }
 }
 
@@ -213,6 +222,7 @@ export async function setAdmin(userId: string, isAdmin: boolean): Promise<Action
     .eq("user_id", userId)
     .eq("business_id", g.session.business.id)
   if (error) return { ok: false, error: dbMessage(error) }
+  await logActivity(g.session, "role_changed", target.username, { from: target.role, to: isAdmin ? "admin" : "staff", field: "role" })
   refresh()
   return { ok: true, data: null }
 }
@@ -226,6 +236,7 @@ export async function removeUser(userId: string): Promise<ActionResult> {
   if (target.role === "owner") return { ok: false, error: "The owner can't be removed." }
   const { error } = await createSupabaseAdminClient().auth.admin.deleteUser(userId) // removes the membership too
   if (error) return { ok: false, error: error.message }
+  await logActivity(g.session, "staff_removed", target.username)
   refresh()
   return { ok: true, data: null }
 }
@@ -239,6 +250,28 @@ export async function updateFeatures(input: FeaturesInput): Promise<ActionResult
   const { supabase, business } = g.session
   const { error } = await supabase.from("businesses").update(features).eq("id", business.id)
   if (error) return { ok: false, error: dbMessage(error) }
+  await logActivity(g.session, "features_changed", business.name, { modules: features.modules, options: features.options })
+  refresh()
+  return { ok: true, data: null }
+}
+
+/** What a staff login may do (see lib/permissions.ts). Owners and admins can always do everything. */
+export async function setPermissions(userId: string, permissions: string[]): Promise<ActionResult> {
+  const g = await guard({ admin: true })
+  if (!g.ok) return g
+  const target = await memberOfMyBusiness(g.session, userId)
+  if (!target) return { ok: false, error: "That person isn't part of your business." }
+  if (target.role !== "staff") return { ok: false, error: "Owners and admins can always do everything." }
+  const clean = ALL_PERMISSIONS.filter(p => permissions.includes(p))
+  const { error } = await createSupabaseAdminClient()
+    .from("members")
+    .update({ permissions: clean })
+    .eq("user_id", userId)
+    .eq("business_id", g.session.business.id)
+  if (error) return { ok: false, error: dbMessage(error) }
+  await logActivity(g.session, "permissions_changed", target.username, {
+    allowed: clean.length ? clean.map(p => PERMISSION_INFO[p as Permission].label) : ["Cashier only"],
+  })
   refresh()
   return { ok: true, data: null }
 }

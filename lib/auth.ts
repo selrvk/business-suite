@@ -5,6 +5,7 @@ import { getSupabase } from "./supabase/server"
 import { createSupabaseAdminClient } from "./supabase/admin"
 import { hasModule, type ModuleKey } from "./config"
 import { businessModules, hasOption, type ProductOption } from "./features"
+import { PERMISSION_INFO, allowed, effectivePermissions, type Permission } from "./permissions"
 import type { Business, Role } from "./types"
 
 export type Session = {
@@ -16,11 +17,14 @@ export type Session = {
   isAdmin: boolean
   isOwner: boolean
   business: Business
+  /** What this login may do (see lib/permissions.ts). */
+  can: (permission: Permission) => boolean
+  permissions: Permission[]
 }
 
-type Membership = { username: string; role: Role; business: Business }
+type Membership = { username: string; role: Role; permissions: string[] | null; business: Business }
 
-const MEMBER_SELECT = "username, role, business:businesses(*)"
+const MEMBER_SELECT = "username, role, permissions, business:businesses(*)"
 
 /**
  * A login's business, username and role. These rarely change, so they're kept
@@ -100,6 +104,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
     isAdmin: membership.role === "owner" || membership.role === "admin",
     isOwner: membership.role === "owner",
     business: membership.business,
+    can: permission => allowed(membership.role, membership.permissions, permission),
+    permissions: effectivePermissions(membership.role, membership.permissions),
   }
 })
 
@@ -156,17 +162,28 @@ export async function requireOption(option: ProductOption) {
  * some of them use the service-role key.
  */
 export async function guard(
-  options: { admin?: boolean; allowExpired?: boolean } = {},
+  options: { admin?: boolean; allowExpired?: boolean; permission?: Permission } = {},
 ): Promise<{ ok: true; session: Session } | { ok: false; error: string }> {
   const session = await getSession()
   if (!session) return { ok: false, error: "Your session expired. Please log in again." }
   if (!options.allowExpired && !access(session.business).active)
     return { ok: false, error: "Your free trial or subscription has ended. Go to Billing to continue." }
-  if (options.admin) {
-    const { data } = await session.supabase.from("members").select("role").eq("user_id", session.userId).maybeSingle()
-    if (data?.role !== "owner" && data?.role !== "admin") return { ok: false, error: "Only an owner or admin can do that." }
+  if (options.admin || options.permission) {
+    // Checked fresh (not from the cache), since an owner may have just changed it.
+    const { data } = await session.supabase.from("members").select("role, permissions").eq("user_id", session.userId).maybeSingle()
+    const isAdmin = data?.role === "owner" || data?.role === "admin"
+    if (options.admin && !isAdmin) return { ok: false, error: "Only an owner or admin can do that." }
+    if (options.permission && !(data && allowed(data.role, data.permissions, options.permission)))
+      return { ok: false, error: `You don't have permission to ${PERMISSION_INFO[options.permission].label.toLowerCase()}. Ask an owner or admin.` }
   }
   return { ok: true, session }
+}
+
+/** For pages that need a permission: back to the dashboard without it. */
+export async function requirePermission(permission: Permission) {
+  const session = await requireActive()
+  if (!session.can(permission)) redirect("/dashboard")
+  return session
 }
 
 // ---------------------------------------------------------------------------

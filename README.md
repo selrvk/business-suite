@@ -8,7 +8,7 @@ get a 14-day free trial, and pay to keep going.
 | Module | What it does |
 | --- | --- |
 | **Inventory** | Products with barcodes, scan to find, **Quick Scan** (every scan adds or removes stock), **Stock In** for deliveries, corrections, a full **Stock Log**, a **Reorder List** grouped by supplier, Excel export, **Import** from Excel/CSV (with a preview of every change), printable barcode labels. Optional: **suppliers**, **categories**, **shelf locations**, **expiry dates** per delivery (sold soonest-first, with warnings), and up to 5 custom product fields. |
-| **Sales & POS** | Checkout where you scan items into the cart, with cash and change, receipts for 80mm thermal printers, pending orders and sales history. |
+| **Sales & POS** | Checkout where you scan items into the cart, with cash and change, GCash/Maya/card/bank with reference numbers, discounts (including Senior Citizen/PWD 20%, VAT-exempt for VAT-registered businesses), receipts for 80mm thermal printers, pending orders, voids, sales history, **customers and credit ("utang")** with limits and payments, and an **End of Day** cash count. |
 | **Attendance** | Printable ID badges, a **Time Clock** kiosk (scan in, scan out), today's board, **Timesheets** with payroll cut-offs, and fixes for missed punches. |
 | **Fleet** | Vehicle tags, trips with odometer readings, fuel logs, km per month, km per liter and cost per km. |
 
@@ -101,9 +101,12 @@ Rename the business and its staff link in Settings afterwards.
 
 - **Owner**: the person who signed up. Everything, including billing.
 - **Admin**: everything except the owner's account and billing details.
-- **Staff**: sell, receive and correct stock, clock people in and out, log trips and fuel.
+- **Staff**: sell (including Senior Citizen/PWD discounts), do Stock In, clock people in and out, log trips and fuel. The
+  owner switches on more per person in Settings → Logins: add and edit products, see costs, correct stock, give other
+  discounts, sell on credit, and cancel or void sales. New staff start as cashiers; staff from before permissions existed
+  keep everything.
 
-The database enforces these rules, not just the interface.
+The database enforces these rules, not just the interface. Owners and admins see who did what in the **Activity Log**.
 
 ## Develop
 

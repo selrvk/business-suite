@@ -26,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         isPlatformAdmin={platform}
         modules={businessModules(session.business)}
         options={session.business.options ?? []}
+        permissions={session.permissions}
       />
       <div className="flex-1 min-w-0">
         {onTrial && session.isAdmin && (
@@ -48,6 +49,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               customFields: customFields(session.business),
               lowStock: session.business.low_stock_threshold,
               today: toYmd(),
+              permissions: session.permissions,
+              isAdmin: session.isAdmin,
+              vatRegistered: !!session.business.vat_registered,
             }}
           >
             {children}

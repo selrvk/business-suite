@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Wand2, X } from "lucide-react"
-import { useBusinessFeatures } from "@/components/business-features"
+import { useBusinessFeatures, useCan } from "@/components/business-features"
 import { Modal } from "@/components/modal"
 import { codeFieldProps } from "@/components/scan-input"
 import { generateProductBarcode } from "@/components/barcode"
@@ -53,6 +53,9 @@ function ProductForm({
   onSaved?: (id: number) => void
 }) {
   const { options, customFields, lowStock } = useBusinessFeatures()
+  const can = useCan()
+  const showCost = can("see_costs")
+  const stockLocked = !!item && !can("adjust_stock")
   const has = (o: ProductOption) => options.includes(o)
   const [barcode, setBarcode] = useState(item?.barcode ?? initialBarcode)
   const [supplierId, setSupplierId] = useState<number | null>(item?.supplier_id ?? null)
@@ -85,7 +88,7 @@ function ProductForm({
       brand: text("brand"),
       barcode,
       unit: text("unit"),
-      price_buy: Number(form.get("price_buy")),
+      ...(showCost ? { price_buy: Number(form.get("price_buy")) } : {}),
       price_sell: Number(form.get("price_sell")),
       current_stock: Number(form.get("current_stock")),
       reorder_level: level === "" ? null : Number(level),
@@ -151,11 +154,13 @@ function ProductForm({
         <p className="hint">Click the box and scan the product. No barcode? Generate one and print a label.</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <label>
-          <span className="label">Cost ({sym}) *</span>
-          <input className="input" name="price_buy" type="number" step="0.01" min="0" defaultValue={item?.price_buy ?? ""} placeholder="0.00" required />
-        </label>
+      <div className={`grid gap-3 ${showCost ? "grid-cols-3" : "grid-cols-2"}`}>
+        {showCost && (
+          <label>
+            <span className="label">Cost ({sym}) *</span>
+            <input className="input" name="price_buy" type="number" step="0.01" min="0" defaultValue={item?.price_buy ?? ""} placeholder="0.00" required />
+          </label>
+        )}
         <label>
           <span className="label">Price ({sym}) *</span>
           <input className="input" name="price_sell" type="number" step="0.01" min="0" defaultValue={item?.price_sell ?? ""} placeholder="0.00" required />
@@ -170,11 +175,13 @@ function ProductForm({
             min="0"
             value={openingStock}
             onChange={e => setOpeningStock(e.target.value)}
+            readOnly={stockLocked}
+            title={stockLocked ? "You don't have permission to correct stock" : undefined}
             required
           />
         </label>
       </div>
-      {item && <p className="hint -mt-2">Changing the stock here is logged as a correction. For deliveries, use Stock In.</p>}
+      {item && !stockLocked && <p className="hint -mt-2">Changing the stock here is logged as a correction. For deliveries, use Stock In.</p>}
 
       {!item && has("expiry") && Number(openingStock) > 0 && (
         <div className="grid grid-cols-2 gap-3">

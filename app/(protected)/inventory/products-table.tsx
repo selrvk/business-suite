@@ -13,7 +13,7 @@ import {
 import { ConfirmDialog } from "@/components/modal"
 import { useScanner } from "@/hooks/use-scanner"
 import { beep } from "@/lib/beep"
-import { useBusinessFeatures } from "@/components/business-features"
+import { useBusinessFeatures, useCan } from "@/components/business-features"
 import { describeExpiry } from "@/lib/expiry"
 import { money, num } from "@/lib/format"
 import type { Item } from "@/lib/types"
@@ -37,6 +37,8 @@ export function ProductsTable({
   expiry?: Record<number, string>
 }) {
   const { options, customFields, lowStock, today } = useBusinessFeatures()
+  const can = useCan()
+  const showCost = can("see_costs")
   const showCategory = options.includes("categories")
   const showLocation = options.includes("locations")
   const showSupplier = options.includes("suppliers")
@@ -158,12 +160,16 @@ export function ProductsTable({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => setEditing(i)}>
-          <Pencil /> Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setAdjusting(i)}>
-          <SlidersHorizontal /> Adjust stock
-        </DropdownMenuItem>
+        {can("edit_products") && (
+          <DropdownMenuItem onSelect={() => setEditing(i)}>
+            <Pencil /> Edit
+          </DropdownMenuItem>
+        )}
+        {can("adjust_stock") && (
+          <DropdownMenuItem onSelect={() => setAdjusting(i)}>
+            <SlidersHorizontal /> Adjust stock
+          </DropdownMenuItem>
+        )}
         {i.barcode && (
           <DropdownMenuItem asChild>
             <Link href={`/print/labels/products?ids=${i.id}`} target="_blank">
@@ -191,15 +197,17 @@ export function ProductsTable({
             No product has barcode <span className="mono font-semibold">{unknownCode}</span>.
           </span>
           <span className="flex gap-2">
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                setAdding({ barcode: unknownCode })
-                setUnknownCode(null)
-              }}
-            >
-              <Plus size={13} /> Add it as a new product
-            </button>
+            {can("edit_products") && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setAdding({ barcode: unknownCode })
+                  setUnknownCode(null)
+                }}
+              >
+                <Plus size={13} /> Add it as a new product
+              </button>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={() => setUnknownCode(null)} aria-label="Dismiss">
               <X size={13} />
             </button>
@@ -297,7 +305,7 @@ export function ProductsTable({
               {sortHeader("brand", "Brand")}
               {showLocation && sortHeader("location", "Shelf")}
               {sortHeader("current_stock", "Stock", true)}
-              <th className="num">Cost</th>
+              {showCost && <th className="num">Cost</th>}
               {sortHeader("price_sell", "Price", true)}
               {showExpiry && sortHeader("expires", "Expires")}
               {sortHeader("value", "Stock value", true)}
@@ -317,7 +325,7 @@ export function ProductsTable({
                 <td className="num">
                   {stockBadge(i)} <span className="faint text-xs">{i.unit}</span>
                 </td>
-                <td className="num muted">{money(i.price_buy)}</td>
+                {showCost && <td className="num muted">{money(i.price_buy)}</td>}
                 <td className="num text-white">{money(i.price_sell)}</td>
                 {showExpiry && <td>{expiryBadge(i)}</td>}
                 <td className="num text-good font-semibold">{money(i.current_stock * i.price_sell)}</td>
@@ -391,6 +399,8 @@ export function ProductsTable({
 /** Header button that opens the add-product form. */
 export function AddProductButton() {
   const [open, setOpen] = useState(false)
+  const can = useCan()
+  if (!can("edit_products")) return null
   return (
     <>
       <button className="btn btn-primary" onClick={() => setOpen(true)}>

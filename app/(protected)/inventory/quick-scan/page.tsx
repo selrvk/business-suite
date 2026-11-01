@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { History } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
-import { requireModule, requireUser } from "@/lib/auth"
+import { requireModule, requirePermission } from "@/lib/auth"
 import { businessModules } from "@/lib/features"
 import { QuickScan } from "./quick-scan"
 
@@ -9,7 +9,7 @@ export const metadata = { title: "Quick Scan" }
 
 export default async function QuickScanPage() {
   await requireModule("inventory")
-  const selling = businessModules((await requireUser()).business).includes("sales")
+  const selling = businessModules((await requirePermission("adjust_stock")).business).includes("sales")
   return (
     <>
       <PageHeader

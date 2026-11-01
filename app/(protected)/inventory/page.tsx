@@ -16,7 +16,8 @@ export const metadata = { title: "Products" }
 export default async function InventoryPage() {
   await requireModule("inventory")
   const supabase = await getSupabase()
-  const { isAdmin, business } = await requireUser()
+  const { isAdmin, business, can } = await requireUser()
+  const showCost = can("see_costs")
   const showSuppliers = hasOption(business, "suppliers")
   const showExpiry = hasOption(business, "expiry")
   const fields = customFields(business)
@@ -59,7 +60,7 @@ export default async function InventoryPage() {
     Brand: i.brand ?? "",
     Stock: i.current_stock,
     Unit: i.unit,
-    Cost: i.price_buy,
+    ...(showCost ? { Cost: i.price_buy } : {}),
     Price: i.price_sell,
     ...(showSuppliers ? { Supplier: i.supplier_id ? (suppliers[i.supplier_id] ?? "") : "" } : {}),
     ...(hasOption(business, "categories") ? { Category: i.category ?? "" } : {}),
@@ -67,7 +68,7 @@ export default async function InventoryPage() {
     "Low-stock level": i.reorder_level ?? "",
     ...Object.fromEntries(fields.map(f => [f.label, i.extra?.[f.id] ?? ""])),
     ...(showExpiry ? { "Nearest expiry": expiry[i.id] ?? "" } : {}),
-    "Stock value (cost)": +(i.current_stock * i.price_buy).toFixed(2),
+    ...(showCost ? { "Stock value (cost)": +(i.current_stock * i.price_buy).toFixed(2) } : {}),
     "Stock value (price)": +(i.current_stock * i.price_sell).toFixed(2),
   }))
 
@@ -91,7 +92,11 @@ export default async function InventoryPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
         <Stat label="Products" value={num(items.length)} hint={`${num(units)} units on hand`} />
-        <Stat label="Stock value (cost)" value={money(costValue)} tone="info" />
+        {showCost ? (
+          <Stat label="Stock value (cost)" value={money(costValue)} tone="info" />
+        ) : (
+          <Stat label="Stock value (price)" value={money(items.reduce((sum, i) => sum + Math.max(0, i.current_stock) * i.price_sell, 0))} tone="info" />
+        )}
         <Stat label="Low stock" value={lowCount} tone={lowCount ? "warn" : "good"} hint="At or below their low-stock level" />
         <Stat label="Out of stock" value={outCount} tone={outCount ? "bad" : "good"} />
       </div>

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { guard } from "@/lib/auth"
+import { logActivity } from "@/lib/activity"
 import { dbMessage } from "@/lib/db"
 import { customFields, type CustomField } from "@/lib/features"
 import { MAX_IMPORT_ROWS, cleanImportRow, duplicateProblems, rowProblem, type ImportRow } from "@/lib/product-import"
@@ -51,8 +52,10 @@ export async function importProducts(
     p_set_stock: setStock === true,
   })
   if (error) return { ok: false, error: dbMessage(error) }
+  const counts = data as { added: number; updated: number; unchanged: number }
+  await logActivity(g.session, "products_imported", `${rows.length} rows`, { added: counts.added, updated: counts.updated, set_stock: setStock === true })
   refresh()
-  return { ok: true, data: data as { added: number; updated: number; unchanged: number } }
+  return { ok: true, data: counts }
 }
 
 export type ProductInput = {
@@ -60,7 +63,8 @@ export type ProductInput = {
   brand: string
   barcode: string
   unit: string
-  price_buy: number
+  /** Left out by people who can't see costs: the saved cost stays. */
+  price_buy?: number
   price_sell: number
   current_stock: number
   // Optional details, sent only when the business uses them. Left out = keep what's saved.
@@ -102,11 +106,11 @@ function cleanExtra(extra: Record<string, string> | undefined, fields: CustomFie
 
 function clean(input: ProductInput, fields: CustomField[]) {
   const name = input.name.trim()
-  const price_buy = Number(input.price_buy)
+  const price_buy = input.price_buy === undefined ? undefined : Number(input.price_buy)
   const price_sell = Number(input.price_sell)
   const current_stock = Number(input.current_stock)
   if (!name) return { error: "Enter a product name." }
-  if (!Number.isFinite(price_buy) || price_buy < 0) return { error: "Cost must be zero or more." }
+  if (price_buy !== undefined && (!Number.isFinite(price_buy) || price_buy < 0)) return { error: "Cost must be zero or more." }
   if (!Number.isFinite(price_sell) || price_sell < 0) return { error: "Selling price must be zero or more." }
   if (!Number.isInteger(current_stock) || current_stock < 0) return { error: "Stock must be a whole number, zero or more." }
 
@@ -129,7 +133,7 @@ function clean(input: ProductInput, fields: CustomField[]) {
       brand: input.brand.trim() || null,
       barcode: input.barcode.trim() || null,
       unit: input.unit.trim().toLowerCase() || "pieces",
-      price_buy,
+      ...(price_buy !== undefined ? { price_buy } : {}),
       price_sell,
       ...optional,
     },
@@ -153,7 +157,7 @@ export async function productChoices(): Promise<ActionResult<{ suppliers: { id: 
 }
 
 export async function addProduct(input: ProductInput): Promise<ActionResult<{ id: number }>> {
-  const g = await guard()
+  const g = await guard({ permission: "edit_products" })
   if (!g.ok) return g
   const product = clean(input, customFields(g.session.business))
   if ("error" in product) return { ok: false, error: product.error! }
@@ -184,6 +188,7 @@ export async function addProduct(input: ProductInput): Promise<ActionResult<{ id
     }
   }
 
+  await logActivity(g.session, "product_added", product.fields.name, { price: product.fields.price_sell, stock: product.current_stock })
   refresh()
   return { ok: true, data: { id: data.id } }
 }
@@ -193,17 +198,20 @@ export async function addProduct(input: ProductInput): Promise<ActionResult<{ id
  * user typed is applied, so a sale made while the form was open isn't undone.
  */
 export async function updateProduct(id: number, input: ProductInput, stockShown: number): Promise<ActionResult> {
-  const g = await guard()
+  const g = await guard({ permission: "edit_products" })
   if (!g.ok) return g
   const product = clean(input, customFields(g.session.business))
   if ("error" in product) return { ok: false, error: product.error! }
+  const change = product.current_stock - stockShown
+  if (change !== 0 && !g.session.can("adjust_stock")) return { ok: false, error: "You don't have permission to correct stock. Use Stock In for deliveries." }
 
   const { supabase } = g.session
+  const { data: before } = await supabase.from("items").select("*").eq("id", id).maybeSingle()
+  if (!before) return { ok: false, error: "That product no longer exists." }
   let extra: Record<string, unknown> | undefined
   if (product.extra) {
     // Merge, so values of fields that are hidden right now are kept.
-    const { data: saved } = await supabase.from("items").select("extra").eq("id", id).maybeSingle()
-    extra = { ...((saved?.extra as Record<string, unknown>) ?? {}), ...product.extra }
+    extra = { ...((before.extra as Record<string, unknown>) ?? {}), ...product.extra }
   }
   const { error } = await supabase
     .from("items")
@@ -211,7 +219,16 @@ export async function updateProduct(id: number, input: ProductInput, stockShown:
     .eq("id", id)
   if (error) return { ok: false, error: dbMessage(error) }
 
-  const change = product.current_stock - stockShown
+  // Log what changed: prices on their own (they matter most), then everything else.
+  const fields = product.fields as Record<string, unknown>
+  if (Number(before.price_sell) !== Number(fields.price_sell))
+    await logActivity(g.session, "price_changed", fields.name as string, { field: "price", from: Number(before.price_sell), to: Number(fields.price_sell) })
+  if (fields.price_buy !== undefined && Number(before.price_buy) !== Number(fields.price_buy))
+    await logActivity(g.session, "price_changed", fields.name as string, { field: "cost", from: Number(before.price_buy), to: Number(fields.price_buy) })
+  const others = Object.keys(fields).filter(k => !["price_sell", "price_buy"].includes(k) && String(fields[k] ?? "") !== String(before[k] ?? ""))
+  if (others.length || (extra && JSON.stringify(extra) !== JSON.stringify(before.extra ?? {})))
+    await logActivity(g.session, "product_changed", fields.name as string, { changed: [...others, ...(extra && JSON.stringify(extra) !== JSON.stringify(before.extra ?? {}) ? ["custom fields"] : [])] })
+
   if (change !== 0) {
     const { error: stockError } = await supabase.rpc("adjust_stock", {
       p_item_id: id,
@@ -220,6 +237,7 @@ export async function updateProduct(id: number, input: ProductInput, stockShown:
       p_note: "Corrected in product details",
     })
     if (stockError) return { ok: false, error: dbMessage(stockError) }
+    await logActivity(g.session, "stock_corrected", fields.name as string, { from: stockShown, to: product.current_stock, change })
   }
 
   refresh()
@@ -229,15 +247,16 @@ export async function updateProduct(id: number, input: ProductInput, stockShown:
 export async function deleteProduct(id: number): Promise<ActionResult> {
   const g = await guard({ admin: true })
   if (!g.ok) return g
-  const { data, error } = await g.session.supabase.from("items").delete().eq("id", id).select("id")
+  const { data, error } = await g.session.supabase.from("items").delete().eq("id", id).select("id, name, current_stock")
   if (error) return { ok: false, error: dbMessage(error) }
   if (!data?.length) return { ok: false, error: "Product not found, or you don't have permission to delete it." }
+  await logActivity(g.session, "product_deleted", data[0].name, { stock: data[0].current_stock })
   refresh()
   return { ok: true, data: null }
 }
 
 export async function adjustStock(id: number, change: number, reason: StockReason, note: string): Promise<ActionResult<number>> {
-  const g = await guard()
+  const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   if (!Number.isInteger(change) || change === 0) return { ok: false, error: "Enter a whole number other than zero." }
   const { data, error } = await g.session.supabase.rpc("adjust_stock", {
@@ -247,6 +266,10 @@ export async function adjustStock(id: number, change: number, reason: StockReaso
     p_note: note,
   })
   if (error) return { ok: false, error: dbMessage(error) }
+  if (reason === "adjust") {
+    const { data: item } = await g.session.supabase.from("items").select("name").eq("id", id).maybeSingle()
+    await logActivity(g.session, "stock_corrected", item?.name ?? `Product ${id}`, { change, stock: data as number, note: note || null })
+  }
   refresh()
   return { ok: true, data: data as number }
 }
@@ -279,7 +302,7 @@ export type ScanResult =
  * revalidation on purpose so rapid scanning stays fast.
  */
 export async function quickScan(code: string, change: number, note: string): Promise<ActionResult<ScanResult>> {
-  const g = await guard()
+  const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   if (!Number.isInteger(change) || change === 0 || Math.abs(change) > 99999)
     return { ok: false, error: "Quantity per scan must be a whole number." }
@@ -295,7 +318,7 @@ export async function quickScan(code: string, change: number, note: string): Pro
 
 /** Reverses a Quick Scan (logged as a correction). */
 export async function undoScan(itemId: number, change: number): Promise<ActionResult<number>> {
-  const g = await guard()
+  const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   const { data, error } = await g.session.supabase.rpc("adjust_stock", {
     p_item_id: itemId,

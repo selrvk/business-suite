@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { guard } from "@/lib/auth"
+import { logActivity } from "@/lib/activity"
 import { dbMessage } from "@/lib/db"
 import type { ActionResult } from "@/lib/types"
 
@@ -13,17 +14,20 @@ function refresh() {
 
 /** Takes a whole batch out of stock (expired, damaged, returned) and logs it. */
 export async function removeBatch(id: number, reason: string): Promise<ActionResult> {
-  const g = await guard()
+  const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
+  const { data: batch } = await g.session.supabase.from("stock_batches").select("quantity, lot, expires_on, items(name)").eq("id", id).maybeSingle()
   const { error } = await g.session.supabase.rpc("remove_batch", { p_batch_id: id, p_note: reason.trim().slice(0, 60) || "Removed" })
   if (error) return { ok: false, error: dbMessage(error) }
+  const item = batch?.items as unknown as { name: string } | null
+  await logActivity(g.session, "batch_removed", item?.name ?? `Batch ${id}`, { quantity: batch?.quantity, lot: batch?.lot, expires: batch?.expires_on, reason })
   refresh()
   return { ok: true, data: null }
 }
 
 /** Fixes a batch's expiry date or lot number (a typo at Stock In). */
 export async function updateBatch(id: number, input: { expires_on: string; lot: string }): Promise<ActionResult> {
-  const g = await guard()
+  const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   if (input.expires_on && !YMD.test(input.expires_on)) return { ok: false, error: "Pick a valid date." }
   if (!input.expires_on && !input.lot.trim()) return { ok: false, error: "Enter an expiry date or lot number." }
@@ -38,7 +42,7 @@ export async function updateBatch(id: number, input: { expires_on: string; lot: 
 
 /** Records the expiry date of stock already on hand that has none yet. Doesn't change the stock. */
 export async function recordBatch(input: { item_id: number; quantity: number; expires_on: string; lot: string }): Promise<ActionResult> {
-  const g = await guard()
+  const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   if (!Number.isInteger(input.quantity) || input.quantity <= 0) return { ok: false, error: "Enter how many." }
   if (input.expires_on && !YMD.test(input.expires_on)) return { ok: false, error: "Pick a valid date." }

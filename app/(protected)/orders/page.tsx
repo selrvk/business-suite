@@ -13,7 +13,7 @@ export const metadata = { title: "Pending Orders" }
 export default async function OrdersPage() {
   await requireModule("sales")
   const supabase = await getSupabase()
-  const [, { data: orders, error }] = await Promise.all([
+  const [session, { data: orders, error }] = await Promise.all([
     requireUser(),
     supabase.from("orders").select("*").eq("status", "PENDING").order("date_created", { ascending: true }).limit(500),
   ])
@@ -80,7 +80,7 @@ export default async function OrdersPage() {
                       <p className="stat-label">Total</p>
                       <p className="display text-2xl text-white">{money(order.total_price)}</p>
                     </div>
-                    <OrderActions orderId={order.id} number={order.number} />
+                    <OrderActions orderId={order.id} number={order.number} canCancel={session.can("cancel_sales")} />
                   </div>
                   {own.length > 0 && (
                     <div className="px-5 py-3 text-sm border-t" style={{ borderColor: "var(--app-border)", background: "rgba(0,0,0,0.15)" }}>

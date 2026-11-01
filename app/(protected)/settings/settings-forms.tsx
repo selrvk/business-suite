@@ -1,13 +1,14 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Check, Copy, ImageUp, KeyRound, ShieldCheck, ShieldOff, Trash2, UserPlus } from "lucide-react"
+import { Check, Copy, ImageUp, KeyRound, ShieldCheck, ShieldOff, SlidersHorizontal, Trash2, UserPlus } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
 import { ConfirmButton, Modal } from "@/components/modal"
 import { formatDate } from "@/lib/format"
 import { shrinkImage } from "@/lib/image"
 import type { Business, Role } from "@/lib/types"
-import { addUser, changePassword, removeLogo, removeUser, resetPassword, setAdmin, updateBusiness, uploadLogo } from "./actions"
+import { ALL_PERMISSIONS, PERMISSION_INFO, type Permission } from "@/lib/permissions"
+import { addUser, changePassword, removeLogo, removeUser, resetPassword, setAdmin, setPermissions, updateBusiness, uploadLogo } from "./actions"
 
 function useStatus() {
   const [busy, setBusy] = useState(false)
@@ -35,6 +36,7 @@ export function BusinessForm({ business }: { business: Business }) {
       contact: String(form.get("contact")),
       receipt_footer: String(form.get("receipt_footer")),
       receipt_note: String(form.get("receipt_note")),
+      vat_registered: form.get("vat_registered") === "on",
       low_stock_threshold: Number(form.get("low_stock_threshold")),
       slug: String(form.get("slug")),
     })
@@ -78,6 +80,16 @@ export function BusinessForm({ business }: { business: Business }) {
             <input className="input mono" name="slug" defaultValue={business.slug} required minLength={2} maxLength={40} pattern="[a-z0-9]+(-[a-z0-9]+)*" />
           </span>
           <span className="hint">Changing it changes the link your staff bookmark. Their usernames and passwords stay the same.</span>
+        </label>
+        <label className="check-row">
+          <input type="checkbox" name="vat_registered" defaultChecked={!!business.vat_registered} />
+          <span>
+            <span className="block text-sm font-semibold text-white">VAT-registered</span>
+            <span className="block text-xs faint">
+              Senior Citizen and PWD sales then also drop the 12% VAT before the 20% discount, as the law requires for
+              VAT-registered businesses. Leave off if you&apos;re non-VAT.
+            </span>
+          </span>
         </label>
         <label className="max-w-xs">
           <span className="label">Low-stock level</span>
@@ -176,12 +188,13 @@ function LogoField({ name, logo, onChange }: { name: string; logo: string; onCha
   )
 }
 
-export type UserRow = { user_id: string; username: string; role: Role; created_at: string }
+export type UserRow = { user_id: string; username: string; role: Role; created_at: string; permissions: string[] | null }
 
 export function Users({ users, currentUserId, slug, staffLink }: { users: UserRow[]; currentUserId: string; slug: string; staffLink: string }) {
   const { busy, setBusy, status, setStatus } = useStatus()
   const [isAdmin, setIsAdmin] = useState(false)
   const [resetting, setResetting] = useState<UserRow | null>(null)
+  const [permitting, setPermitting] = useState<UserRow | null>(null)
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -194,7 +207,7 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
     const name = String(form.get("username")).trim().toLowerCase()
     setStatus({
       ok: true,
-      text: `${name} can log in now: at ${staffLink} with the username "${name}", or on the main login page as "${name}@${slug}".`,
+      text: `${name} can log in now: at ${staffLink} with the username "${name}", or on the main login page as "${name}@${slug}".${isAdmin ? "" : " They start as a cashier; use the sliders button to allow more."}`,
     })
     formEl.reset()
     setIsAdmin(false)
@@ -244,12 +257,26 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
                   <p className="text-xs faint">
                     Logs in as <span className="mono muted">{u.username}@{slug}</span> · since {formatDate(u.created_at)}
                   </p>
+                  {u.role === "staff" && (
+                    <p className="text-[0.7rem] faint truncate">
+                      {u.permissions === null
+                        ? "Can do everything staff can"
+                        : u.permissions.length === 0
+                          ? "Cashier: sells, stock in, time clock"
+                          : `Also: ${u.permissions.map(p => PERMISSION_INFO[p as Permission]?.label.toLowerCase() ?? p).join(", ")}`}
+                    </p>
+                  )}
                 </div>
                 <span className="pill" data-tone={u.role === "owner" ? "brand" : isAdmin ? "info" : undefined}>
                   {u.role === "owner" ? "Owner" : isAdmin ? "Admin" : "Staff"}
                 </span>
                 {!me && u.role !== "owner" && (
                   <span className="flex">
+                    {u.role === "staff" && (
+                      <button className="btn btn-ghost btn-icon" title="What they can do" onClick={() => setPermitting(u)}>
+                        <SlidersHorizontal size={14} />
+                      </button>
+                    )}
                     <button className="btn btn-ghost btn-icon" title="Reset password" onClick={() => setResetting(u)}>
                       <KeyRound size={14} />
                     </button>
@@ -282,6 +309,9 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
 
       <Modal open={!!resetting} onClose={() => setResetting(null)} title="Reset password" width={400}>
         {resetting && <ResetForm key={resetting.user_id} user={resetting} onClose={() => setResetting(null)} />}
+      </Modal>
+      <Modal open={!!permitting} onClose={() => setPermitting(null)} title={permitting ? `What ${permitting.username} can do` : "Permissions"} width={480}>
+        {permitting && <PermissionsForm key={permitting.user_id} user={permitting} onClose={() => setPermitting(null)} />}
       </Modal>
     </div>
   )
@@ -364,6 +394,57 @@ export function CopyLink({ url }: { url: string }) {
       >
         {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
       </button>
+    </div>
+  )
+}
+
+/** Per-staff permissions, with quick presets. Everyone can sell, do Stock In and use the time clock. */
+function PermissionsForm({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const [chosen, setChosen] = useState<Permission[]>(user.permissions === null ? [...ALL_PERMISSIONS] : (user.permissions as Permission[]))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const toggle = (p: Permission) => setChosen(c => (c.includes(p) ? c.filter(x => x !== p) : [...c, p]))
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    const result = await setPermissions(user.user_id, chosen)
+    setBusy(false)
+    if (!result.ok) return setError(result.error)
+    onClose()
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {error && <p className="alert alert-error">{error}</p>}
+      <p className="text-sm muted">Everyone can sell at Point of Sale (including Senior/PWD discounts), do Stock In and use the time clock.</p>
+      <div className="flex gap-2">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setChosen([])}>
+          Cashier only
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setChosen([...ALL_PERMISSIONS])}>
+          Everything
+        </button>
+      </div>
+      <div className="flex flex-col gap-2">
+        {ALL_PERMISSIONS.map(p => (
+          <label key={p} className="check-row">
+            <input type="checkbox" checked={chosen.includes(p)} onChange={() => toggle(p)} />
+            <span>
+              <span className="block text-sm font-semibold text-white">{PERMISSION_INFO[p].label}</span>
+              <span className="block text-xs faint">{PERMISSION_INFO[p].description}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
     </div>
   )
 }

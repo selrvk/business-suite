@@ -5,11 +5,13 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   Building2,
+  Contact,
   CalendarClock,
   ClipboardList,
   CreditCard,
   History,
   Hourglass,
+  Lock,
   LayoutDashboard,
   Menu,
   Package,
@@ -17,6 +19,7 @@ import {
   Receipt,
   Route,
   ScanBarcode,
+  ScrollText,
   Settings,
   ShieldCheck,
   ShoppingBasket,
@@ -36,7 +39,7 @@ type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean;
 type NavGroup = { label: string; items: NavItem[] }
 
 /** The menu for a business, from the modules and product options it uses. */
-function navGroups(modules: string[], options: string[]): NavGroup[] {
+function navGroups(modules: string[], options: string[], permissions: string[]): NavGroup[] {
   const has = (m: string) => modules.includes(m)
   const inventory = has("inventory")
   const people = has("attendance")
@@ -48,14 +51,16 @@ function navGroups(modules: string[], options: string[]): NavGroup[] {
       items: [
         { href: "/pos", label: "Point of Sale", icon: ScanBarcode, show: has("sales") },
         { href: "/orders", label: "Pending Orders", icon: ClipboardList, show: has("sales") },
-        { href: "/sales", label: "Sales History", icon: Receipt, show: has("sales") },
+        { href: "/sales", label: "Sales History", icon: Receipt, exact: true, show: has("sales") },
+        { href: "/customers", label: "Customers", icon: Contact, show: has("sales") },
+        { href: "/sales/close", label: "End of Day", icon: Lock, show: has("sales") },
       ],
     },
     {
       label: "Inventory",
       items: [
         { href: "/inventory", label: "Products", icon: Package, exact: true, show: inventory },
-        { href: "/inventory/quick-scan", label: "Quick Scan", icon: Zap, show: inventory },
+        { href: "/inventory/quick-scan", label: "Quick Scan", icon: Zap, show: inventory && permissions.includes("adjust_stock") },
         { href: "/inventory/stock-in", label: "Stock In", icon: PackagePlus, show: inventory },
         { href: "/inventory/reorder", label: "Reorder List", icon: ShoppingBasket, show: inventory },
         { href: "/inventory/expiry", label: "Expiry Dates", icon: Hourglass, show: inventory && options.includes("expiry") },
@@ -91,6 +96,7 @@ export default function Nav({
   isPlatformAdmin = false,
   modules,
   options,
+  permissions,
 }: {
   businessName: string
   logoUrl: string | null
@@ -99,8 +105,9 @@ export default function Nav({
   isPlatformAdmin?: boolean
   modules: string[]
   options: string[]
+  permissions: string[]
 }) {
-  const groups = navGroups(modules, options)
+  const groups = navGroups(modules, options, permissions)
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [openedAt, setOpenedAt] = useState(pathname)
@@ -164,6 +171,7 @@ export default function Nav({
   const footer = (
     <div className="border-t pt-3" style={{ borderColor: "var(--app-border)" }}>
       {footerLink("/settings", "Settings", Settings)}
+      {isAdmin && footerLink("/activity", "Activity Log", ScrollText)}
       {isAdmin && footerLink("/billing", "Billing", CreditCard)}
       {isPlatformAdmin && footerLink("/platform", "Platform admin", ShieldCheck)}
       <LogoutButton />

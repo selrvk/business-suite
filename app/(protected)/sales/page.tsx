@@ -11,6 +11,7 @@ import { dayRange, formatDateTime, money, monthStart, readRange, toYmd } from "@
 import { finishedInRange } from "@/lib/sales"
 import type { Order, OrderLine } from "@/lib/types"
 import { deleteHistory, deleteOrder, exportSales } from "./actions"
+import { VoidSaleButton } from "./void-button"
 
 export const metadata = { title: "Sales History" }
 
@@ -30,7 +31,7 @@ export default async function SalesPage({
   const range = dayRange(from, to)
   const status = (params.status && params.status in STATUSES ? params.status : "all") as keyof typeof STATUSES
 
-  const [{ isAdmin }, ordersResult, summaryResult, cancelledResult] = await Promise.all([
+  const [{ isAdmin, can }, ordersResult, summaryResult, cancelledResult] = await Promise.all([
     requireUser(),
     supabase.from("orders").select("*").or(finishedInRange(range.from, range.to, status)).order("id", { ascending: false }).limit(LIMIT),
     supabase.rpc("sales_summary", { p_from: range.from.toISOString(), p_to: range.to.toISOString() }),
@@ -55,8 +56,12 @@ export default async function SalesPage({
   const byMethod = new Map<string, number>()
   for (const o of orders) {
     if (o.status !== "COMPLETED") continue
-    const key = o.payment_method ?? "Not recorded"
-    byMethod.set(key, (byMethod.get(key) ?? 0) + Number(o.total_price))
+    const paid = o.paid_now != null ? Number(o.paid_now) : Number(o.total_price)
+    if (paid > 0) {
+      const key = o.payment_method && o.payment_method !== "Credit" ? o.payment_method : "Not recorded"
+      byMethod.set(key, (byMethod.get(key) ?? 0) + paid)
+    }
+    if (Number(o.on_credit ?? 0) > 0) byMethod.set("On credit", (byMethod.get("On credit") ?? 0) + Number(o.on_credit))
   }
   const truncated = orders.length === LIMIT
 
@@ -144,17 +149,30 @@ export default async function SalesPage({
                         {own.map(l => `${l.item_name ?? l.items?.name ?? "?"} ×${l.quantity}`).join(", ") || "—"}
                       </span>
                     </td>
-                    <td className="muted">{order.payment_method ?? "—"}</td>
-                    <td>
-                      <span className="pill" data-tone={done ? "good" : "bad"}>
-                        {done ? "Completed" : "Cancelled"}
-                      </span>
+                    <td className="muted">
+                      {order.payment_method ?? "—"}
+                      {order.payment_ref && <span className="block text-[0.7rem] faint">ref {order.payment_ref}</span>}
                     </td>
-                    <td className={`num font-semibold ${done ? "text-white" : "faint line-through"}`}>{money(order.total_price)}</td>
+                    <td>
+                      <span className="pill" data-tone={done ? "good" : "bad"} title={order.void_reason ?? undefined}>
+                        {done ? "Completed" : order.void_reason ? "Voided" : "Cancelled"}
+                      </span>
+                      {order.void_reason && <span className="block text-[0.7rem] faint mt-1 max-w-40">{order.void_reason}</span>}
+                    </td>
+                    <td className="num">
+                      <span className={`font-semibold ${done ? "text-white" : "faint line-through"}`}>{money(order.total_price)}</span>
+                      {Number(order.discount_total ?? 0) > 0 && (
+                        <span className="block text-[0.7rem] text-good">
+                          {order.discount_kind === "senior" ? "Senior" : order.discount_kind === "pwd" ? "PWD" : "Discount"} −{money(order.discount_total!)}
+                        </span>
+                      )}
+                      {Number(order.on_credit ?? 0) > 0 && <span className="block text-[0.7rem] text-warn">{money(order.on_credit!)} on credit</span>}
+                    </td>
                     <td className="whitespace-nowrap text-right">
                       <a className="btn btn-ghost btn-icon" href={`/print/receipt/${order.id}`} target="_blank" rel="noreferrer" title="Receipt">
                         <Printer size={14} />
                       </a>
+                      {done && can("cancel_sales") && <VoidSaleButton orderId={order.id} number={order.number} total={Number(order.total_price)} />}
                       {isAdmin && (
                         <ConfirmButton
                           className="btn btn-ghost btn-icon"

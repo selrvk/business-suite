@@ -17,7 +17,7 @@ const none = Promise.resolve({ data: null, error: null, count: null })
 export default async function DashboardPage() {
   // The business's low-stock level is needed for the queries, so get the session first
   // (fast: the membership is cached).
-  const { supabase, username, business } = await requireUser()
+  const { supabase, username, business, can } = await requireUser()
   const today = toYmd()
   const todayRange = dayRange(today)
   const month = dayRange(monthStart(today), today)
@@ -85,7 +85,7 @@ export default async function DashboardPage() {
 
   const actions: { href: string; label: string; icon: LucideIcon; show: boolean }[] = [
     { href: "/pos", label: "New sale", icon: ScanBarcode, show: sales },
-    { href: "/inventory/quick-scan", label: "Quick scan", icon: Zap, show: inventory },
+    { href: "/inventory/quick-scan", label: "Quick scan", icon: Zap, show: inventory && can("adjust_stock") },
     { href: "/time-clock", label: "Time clock", icon: Timer, show: attendance },
     { href: "/fleet", label: "Log a trip", icon: Truck, show: fleet },
   ]
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {sales && <Stat label="Sales today" value={money(st?.total)} hint={`${st?.count ?? 0} transactions`} tone="good" />}
         {sales && <Stat label="This month" value={money(sm?.total)} hint={`${sm?.count ?? 0} sales`} tone="brand" />}
-        {inventory && <Stat label="Stock value" value={money(inv?.sell_value)} hint={`${money(inv?.cost_value)} at cost`} tone="info" />}
+        {inventory && <Stat label="Stock value" value={money(inv?.sell_value)} hint={can("see_costs") ? `${money(inv?.cost_value)} at cost` : "At selling price"} tone="info" />}
         {inventory && (
           <Stat
             label="Needs restock"

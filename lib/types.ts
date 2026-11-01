@@ -18,6 +18,7 @@ export type Business = {
   options: string[] | null
   custom_fields: unknown
   receipt_note: string | null
+  vat_registered: boolean
 }
 
 export type Role = "owner" | "admin" | "staff"
@@ -38,6 +39,16 @@ export type Item = {
   reorder_level?: number | null
   /** Custom field values, by field id. */
   extra?: Record<string, string | number | null>
+}
+
+export type Customer = {
+  id: number
+  name: string
+  phone: string | null
+  address: string | null
+  notes: string | null
+  credit_limit: number | null
+  balance: number
 }
 
 export type Supplier = {
@@ -68,6 +79,18 @@ export type Order = {
   customer_name: string | null
   status: OrderStatus
   total_price: number
+  subtotal?: number | null
+  discount_total?: number
+  vat_exempt?: number
+  discount_kind?: "senior" | "pwd" | "amount" | "percent" | null
+  discount_value?: number | null
+  discount_person?: string | null
+  discount_id_no?: string | null
+  customer_id?: number | null
+  paid_now?: number | null
+  on_credit?: number
+  payment_ref?: string | null
+  void_reason?: string | null
   date_created: string
   date_completed: string | null
   date_cancelled: string | null
@@ -83,6 +106,8 @@ export type OrderLine = {
   item_name: string | null
   quantity: number
   price_at_time: number
+  /** Pesos off this whole line. */
+  discount?: number
   items: { name: string; unit: string } | null
 }
 

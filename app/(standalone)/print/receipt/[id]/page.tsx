@@ -33,9 +33,14 @@ export default async function ReceiptPage({
     ? await supabase.from("members").select("username").eq("user_id", o.created_by).maybeSingle()
     : { data: null }
 
-  const title = o.status === "COMPLETED" ? "Receipt" : o.status === "PENDING" ? "Order slip" : "Cancelled order"
+  const title = o.status === "COMPLETED" ? "Receipt" : o.status === "PENDING" ? "Order slip" : o.void_reason ? "Voided sale" : "Cancelled order"
   const date = o.date_completed ?? o.date_cancelled ?? o.date_created
   const tendered = o.amount_tendered != null ? Number(o.amount_tendered) : null
+  const paidNow = o.paid_now != null ? Number(o.paid_now) : Number(o.total_price)
+  const onCredit = Number(o.on_credit ?? 0)
+  const discountTotal = Number(o.discount_total ?? 0)
+  const vatExempt = Number(o.vat_exempt ?? 0)
+  const seniorOrPwd = o.discount_kind === "senior" || o.discount_kind === "pwd"
 
   return (
     <div className="receipt-screen">
@@ -88,25 +93,70 @@ export default async function ReceiptPage({
               </span>
               <span>{money(l.quantity * l.price_at_time)}</span>
             </div>
+            {Number(l.discount ?? 0) > 0 && (
+              <div className="row">
+                <span>&nbsp;&nbsp;Less discount</span>
+                <span>-{money(Number(l.discount))}</span>
+              </div>
+            )}
           </div>
         ))}
 
         <div className="rule" />
+        {(discountTotal > 0 || vatExempt > 0) && (
+          <>
+            <div className="row">
+              <span>Subtotal</span>
+              <span>{money(o.subtotal ?? Number(o.total_price) + discountTotal + vatExempt)}</span>
+            </div>
+            {vatExempt > 0 && (
+              <div className="row">
+                <span>Less VAT (12%)</span>
+                <span>-{money(vatExempt)}</span>
+              </div>
+            )}
+            <div className="row">
+              <span>{seniorOrPwd ? `Less ${o.discount_kind === "senior" ? "Senior Citizen" : "PWD"} 20%` : "Less discount"}</span>
+              <span>-{money(discountTotal)}</span>
+            </div>
+          </>
+        )}
         <div className="row big">
           <span>TOTAL</span>
           <span>{money(o.total_price)}</span>
         </div>
-        {o.payment_method && (
+        {o.payment_method && o.payment_method !== "Credit" && paidNow > 0 && (
           <div className="row">
             <span>{o.payment_method}</span>
-            <span>{money(tendered ?? o.total_price)}</span>
+            <span>{money(tendered ?? paidNow)}</span>
           </div>
         )}
-        {tendered != null && tendered > Number(o.total_price) && (
+        {o.payment_ref && <p>Ref. no. {o.payment_ref}</p>}
+        {tendered != null && tendered > paidNow && (
           <div className="row">
             <span>Change</span>
-            <span>{money(tendered - Number(o.total_price))}</span>
+            <span>{money(tendered - paidNow)}</span>
           </div>
+        )}
+        {onCredit > 0 && (
+          <div className="row" style={{ fontWeight: 700 }}>
+            <span>Charged to account</span>
+            <span>{money(onCredit)}</span>
+          </div>
+        )}
+        {seniorOrPwd && (
+          <>
+            <div className="rule" />
+            <p>{o.discount_kind === "senior" ? "Senior Citizen" : "PWD"}: {o.discount_person}</p>
+            <p>ID no.: {o.discount_id_no}</p>
+            <p style={{ marginTop: 14 }}>Signature: ______________________</p>
+          </>
+        )}
+        {o.void_reason && (
+          <>
+            <div className="rule" />
+            <p style={{ fontWeight: 700 }}>VOIDED: {o.void_reason}</p>
+          </>
         )}
         {settings.receipt_footer && (
           <>

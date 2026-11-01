@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { CalendarPlus, PackageMinus, Pencil } from "lucide-react"
+import { useCan } from "@/components/business-features"
 import { Modal } from "@/components/modal"
 import { EXPIRY_SOON_DAYS, EXPIRY_WATCH_DAYS, daysUntil, describeExpiry } from "@/lib/expiry"
 import { formatDate, num } from "@/lib/format"
@@ -26,6 +27,7 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
   const [removing, setRemoving] = useState<BatchRow | null>(null)
   const [editing, setEditing] = useState<BatchRow | null>(null)
   const [dating, setDating] = useState(false)
+  const canAdjust = useCan()("adjust_stock")
 
   const shown = useMemo(
     () =>
@@ -55,7 +57,7 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
             </button>
           ))}
         </div>
-        {undated.length > 0 && (
+        {undated.length > 0 && canAdjust && (
           <button className="btn btn-secondary btn-sm" onClick={() => setDating(true)}>
             <CalendarPlus size={13} /> Add dates to stock on hand
           </button>
@@ -98,6 +100,8 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
                   <td className="muted hidden md:table-cell">{formatDate(b.received_at)}</td>
                   <td className="muted hidden md:table-cell">{b.suppliers?.name ?? "—"}</td>
                   <td className="text-right whitespace-nowrap">
+                    {canAdjust && (
+                    <>
                     <button className="btn btn-ghost btn-icon" aria-label="Fix date or lot" onClick={() => setEditing(b)}>
                       <Pencil size={14} />
                     </button>
@@ -108,6 +112,8 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
                     >
                       <PackageMinus size={13} /> Remove
                     </button>
+                    </>
+                    )}
                   </td>
                 </tr>
               )

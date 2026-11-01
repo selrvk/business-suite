@@ -150,3 +150,48 @@ export async function sendAccessReminder(
         },
   )
 }
+
+export type DaySummary = {
+  sales: number
+  gross: number
+  discounts: number
+  senior_pwd: number
+  vat_exempt: number
+  net: number
+  credit_given: number
+  by_method: Record<string, number>
+  collected: Record<string, number>
+  cash_in: number
+  voids: number
+  voided_total: number
+  items_sold: number
+  top_items: { name: string; quantity: number; amount: number }[]
+}
+
+/** To the business's owners: someone closed the day. */
+export async function notifyDayClosed(
+  business: { id: string; name: string },
+  p: { day: string; by: string; summary: DaySummary; expected: number; counted: number; difference: number },
+) {
+  const to = await ownerEmails(business.id)
+  if (!to.length) return
+  const s = p.summary
+  const methods = Object.entries(s.by_method ?? {}).map(([m, v]) => `${m} ${money(v)}`).join(", ")
+  const collected = Object.entries(s.collected ?? {}).map(([m, v]) => `${m} ${money(v)}`).join(", ")
+  const drawer =
+    p.difference === 0 ? "The cash drawer matched exactly." : `The cash drawer was ${p.difference > 0 ? "over" : "short"} by ${money(Math.abs(p.difference))}.`
+  await sendEmail({
+    to,
+    subject: `${business.name}: ${formatDate(p.day)} closed, ${money(s.net)} in sales`,
+    heading: `${formatDate(p.day)} is closed`,
+    paragraphs: [
+      `${p.by} closed the day. ${s.sales} sale${s.sales === 1 ? "" : "s"} for ${money(s.net)}${s.discounts > 0 ? ` after ${money(s.discounts)} in discounts` : ""}.`,
+      ...(methods ? [`Paid by: ${methods}.`] : []),
+      ...(s.credit_given > 0 ? [`On credit: ${money(s.credit_given)}.`] : []),
+      ...(collected ? [`Collected from customers who owed: ${collected}.`] : []),
+      ...(s.voids > 0 ? [`Voided: ${s.voids} sale${s.voids === 1 ? "" : "s"} (${money(s.voided_total)}).`] : []),
+      `Expected cash: ${money(p.expected)}. Counted: ${money(p.counted)}. ${drawer}`,
+    ],
+    button: { label: "See the details", url: link(`/sales/close?day=${p.day}`) },
+  })
+}
