@@ -14,7 +14,7 @@ export default async function ReceiptPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ autoprint?: string }>
 }) {
-  requireModule("sales")
+  await requireModule("sales")
   const [{ id }, { autoprint }] = await Promise.all([params, searchParams])
   const orderId = Number(id)
   if (!Number.isInteger(orderId)) notFound()
@@ -113,6 +113,11 @@ export default async function ReceiptPage({
             <div className="rule" />
             <p className="center">{settings.receipt_footer}</p>
           </>
+        )}
+        {settings.receipt_note && (
+          <p className="center" style={{ fontSize: "0.85em", marginTop: "0.5em", opacity: 0.8 }}>
+            {settings.receipt_note}
+          </p>
         )}
       </div>
     </div>

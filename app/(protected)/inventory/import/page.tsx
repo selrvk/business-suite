@@ -11,13 +11,21 @@ import { ProductImport } from "./product-import"
 export const metadata = { title: "Import products" }
 
 export default async function ImportProductsPage() {
-  requireModule("inventory")
+  await requireModule("inventory")
   const supabase = await getSupabase()
-  const [, { data: items, error }] = await Promise.all([
+  const [, { data: items, error }, supplierRows] = await Promise.all([
     requireAdminPage(),
-    fetchAll<Item>((from, to) => supabase.from("items").select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell").order("id").range(from, to)),
+    fetchAll<Item>((from, to) =>
+      supabase
+        .from("items")
+        .select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell, supplier_id, category, location, reorder_level, extra")
+        .order("id")
+        .range(from, to),
+    ),
+    supabase.from("suppliers").select("id, name"),
   ])
-  if (error) return <DbError error={error} />
+  if (error || supplierRows.error) return <DbError error={(error ?? supplierRows.error)!} />
+  const suppliers: Record<number, string> = Object.fromEntries((supplierRows.data ?? []).map(r => [r.id, r.name]))
 
   return (
     <>
@@ -30,7 +38,7 @@ export default async function ImportProductsPage() {
           <ArrowLeft size={14} /> Products
         </Link>
       </PageHeader>
-      <ProductImport items={items} />
+      <ProductImport items={items} suppliers={suppliers} />
     </>
   )
 }

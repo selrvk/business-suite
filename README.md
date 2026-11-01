@@ -7,7 +7,7 @@ get a 14-day free trial, and pay to keep going.
 
 | Module | What it does |
 | --- | --- |
-| **Inventory** | Products with barcodes, scan to find, **Quick Scan** (every scan adds or removes stock), **Stock In** for deliveries, corrections, a full **Stock Log**, Excel export, **Import** from Excel/CSV (with a preview of every change), printable barcode labels. |
+| **Inventory** | Products with barcodes, scan to find, **Quick Scan** (every scan adds or removes stock), **Stock In** for deliveries, corrections, a full **Stock Log**, a **Reorder List** grouped by supplier, Excel export, **Import** from Excel/CSV (with a preview of every change), printable barcode labels. Optional: **suppliers**, **categories**, **shelf locations**, **expiry dates** per delivery (sold soonest-first, with warnings), and up to 5 custom product fields. |
 | **Sales & POS** | Checkout where you scan items into the cart, with cash and change, receipts for 80mm thermal printers, pending orders and sales history. |
 | **Attendance** | Printable ID badges, a **Time Clock** kiosk (scan in, scan out), today's board, **Timesheets** with payroll cut-offs, and fixes for missed punches. |
 | **Fleet** | Vehicle tags, trips with odometer readings, fuel logs, km per month, km per liter and cost per km. |

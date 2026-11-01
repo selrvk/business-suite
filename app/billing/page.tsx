@@ -4,6 +4,7 @@ import { BrandMark } from "@/components/brand-mark"
 import { access, requireUser } from "@/lib/auth"
 import { MODULE_INFO, config } from "@/lib/config"
 import { formatDate, money, price } from "@/lib/format"
+import { getPaymentDetails } from "@/lib/platform-settings"
 import { SignOutButton } from "../sign-in-form"
 import { PaymentForm } from "./payment-form"
 
@@ -21,10 +22,13 @@ type PaymentRequest = {
 export default async function BillingPage() {
   const { business, isAdmin, supabase } = await requireUser()
   const status = access(business)
-  const { data } = await supabase.from("payment_requests").select("id, period, amount, reference, status, created_at").order("created_at", { ascending: false }).limit(20)
+  const [{ data }, payment] = await Promise.all([
+    supabase.from("payment_requests").select("id, period, amount, reference, status, created_at").order("created_at", { ascending: false }).limit(20),
+    getPaymentDetails(),
+  ])
   const requests = (data ?? []) as PaymentRequest[]
   const pending = requests.some(r => r.status === "pending")
-  const instructions = (process.env.PAYMENT_INSTRUCTIONS ?? "").replace(/\\n/g, "\n").trim()
+  const instructions = payment.instructions
   const yearly = config.price.yearly
   const yearlySaving = yearly ? Math.round((1 - yearly / (config.price.monthly * 12)) * 100) : 0
 
@@ -115,12 +119,23 @@ export default async function BillingPage() {
         <section className="card card-body flex flex-col gap-5">
           <div>
             <p className="section-title mb-3">How to pay</p>
-            {instructions ? (
-              <pre className="whitespace-pre-wrap text-sm text-white font-sans leading-relaxed rounded-lg p-4" style={{ background: "var(--app-bg)" }}>
-                {instructions}
-              </pre>
+            {instructions || payment.qrUrl ? (
+              <div className="flex flex-col sm:flex-row gap-4 items-start">
+                {instructions && (
+                  <pre className="flex-1 w-full whitespace-pre-wrap text-sm text-white font-sans leading-relaxed rounded-lg p-4" style={{ background: "var(--app-bg)" }}>
+                    {instructions}
+                  </pre>
+                )}
+                {payment.qrUrl && (
+                  <div className="flex flex-col items-center gap-1.5 shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- payment QR code, shown as-is */}
+                    <img src={payment.qrUrl} alt="Payment QR code" className="w-44 h-44 object-contain rounded-lg bg-white p-2" />
+                    <span className="text-xs faint">Scan to pay</span>
+                  </div>
+                )}
+              </div>
             ) : (
-              <p className="alert alert-warn">Payment details haven&apos;t been set up yet (PAYMENT_INSTRUCTIONS). Contact us to pay.</p>
+              <p className="alert alert-warn">Payment details aren&apos;t ready yet. Write to {config.contactEmail} to pay.</p>
             )}
           </div>
           <PaymentForm prices={config.price} />

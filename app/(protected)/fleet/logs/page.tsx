@@ -17,7 +17,7 @@ export default async function FleetLogsPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string; vehicle?: string }>
 }) {
-  requireModule("fleet")
+  await requireModule("fleet")
   const params = await searchParams
   const supabase = await getSupabase()
   const today = toYmd()

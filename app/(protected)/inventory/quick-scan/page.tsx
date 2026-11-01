@@ -1,14 +1,15 @@
 import Link from "next/link"
 import { History } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
-import { requireModule } from "@/lib/auth"
-import { hasModule } from "@/lib/config"
+import { requireModule, requireUser } from "@/lib/auth"
+import { businessModules } from "@/lib/features"
 import { QuickScan } from "./quick-scan"
 
 export const metadata = { title: "Quick Scan" }
 
-export default function QuickScanPage() {
-  requireModule("inventory")
+export default async function QuickScanPage() {
+  await requireModule("inventory")
+  const selling = businessModules((await requireUser()).business).includes("sales")
   return (
     <>
       <PageHeader
@@ -17,7 +18,7 @@ export default function QuickScanPage() {
         subtitle={
           <>
             Every scan changes stock right away. No cart, no save button.
-            {hasModule("sales") && " Selling to a customer? Use Point of Sale so the money is recorded too."}
+            {selling && " Selling to a customer? Use Point of Sale so the money is recorded too."}
           </>
         }
       >

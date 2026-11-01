@@ -11,7 +11,7 @@ import { FleetBoard } from "./fleet-board"
 export const metadata = { title: "Vehicles" }
 
 export default async function FleetPage() {
-  requireModule("fleet")
+  await requireModule("fleet")
   const supabase = await getSupabase()
   const today = toYmd()
   const month = dayRange(monthStart(today), today)

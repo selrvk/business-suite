@@ -11,7 +11,7 @@ import { AttendanceBoard, type BoardRow } from "./attendance-board"
 export const metadata = { title: "Attendance" }
 
 export default async function AttendancePage() {
-  requireModule("attendance")
+  await requireModule("attendance")
   const supabase = await getSupabase()
   const today = toYmd()
   const dayStartDate = startOfDay(today)

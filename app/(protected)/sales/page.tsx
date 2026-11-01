@@ -22,7 +22,7 @@ export default async function SalesPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string; status?: string }>
 }) {
-  requireModule("sales")
+  await requireModule("sales")
   const params = await searchParams
   const supabase = await getSupabase()
   const today = toYmd()

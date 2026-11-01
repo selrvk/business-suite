@@ -4,10 +4,12 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+  Building2,
   CalendarClock,
   ClipboardList,
   CreditCard,
   History,
+  Hourglass,
   LayoutDashboard,
   Menu,
   Package,
@@ -17,6 +19,7 @@ import {
   ScanBarcode,
   Settings,
   ShieldCheck,
+  ShoppingBasket,
   Sheet,
   Timer,
   Truck,
@@ -25,56 +28,60 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react"
-import { config, hasModule } from "@/lib/config"
+import { config } from "@/lib/config"
 import { BrandMark } from "./brand-mark"
 import LogoutButton from "./logout-button"
 
 type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; show?: boolean }
 type NavGroup = { label: string; items: NavItem[] }
 
-const people = hasModule("attendance")
-const fleet = hasModule("fleet")
-
-const ALL_GROUPS: NavGroup[] = [
-  { label: "Overview", items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
-  {
-    label: "Sales",
-    items: [
-      { href: "/pos", label: "Point of Sale", icon: ScanBarcode, show: hasModule("sales") },
-      { href: "/orders", label: "Pending Orders", icon: ClipboardList, show: hasModule("sales") },
-      { href: "/sales", label: "Sales History", icon: Receipt, show: hasModule("sales") },
-    ],
-  },
-  {
-    label: "Inventory",
-    items: [
-      { href: "/inventory", label: "Products", icon: Package, exact: true, show: hasModule("inventory") },
-      { href: "/inventory/quick-scan", label: "Quick Scan", icon: Zap, show: hasModule("inventory") },
-      { href: "/inventory/stock-in", label: "Stock In", icon: PackagePlus, show: hasModule("inventory") },
-      { href: "/inventory/movements", label: "Stock Log", icon: History, show: hasModule("inventory") },
-    ],
-  },
-  {
-    label: "People",
-    items: [
-      { href: "/attendance", label: "Attendance", icon: CalendarClock, exact: true, show: people },
-      { href: "/time-clock", label: "Time Clock", icon: Timer, show: people },
-      { href: "/attendance/records", label: "Timesheets", icon: Sheet, show: people },
-      { href: "/employees", label: "Employees", icon: Users, show: people || fleet },
-    ],
-  },
-  {
-    label: "Fleet",
-    items: [
-      { href: "/fleet", label: "Vehicles", icon: Truck, exact: true, show: fleet },
-      { href: "/fleet/logs", label: "Trip & Fuel Logs", icon: Route, show: fleet },
-    ],
-  },
-]
-
-const GROUPS = ALL_GROUPS.map(group => ({ ...group, items: group.items.filter(item => item.show !== false) })).filter(
-  group => group.items.length > 0,
-)
+/** The menu for a business, from the modules and product options it uses. */
+function navGroups(modules: string[], options: string[]): NavGroup[] {
+  const has = (m: string) => modules.includes(m)
+  const inventory = has("inventory")
+  const people = has("attendance")
+  const fleet = has("fleet")
+  const groups: NavGroup[] = [
+    { label: "Overview", items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
+    {
+      label: "Sales",
+      items: [
+        { href: "/pos", label: "Point of Sale", icon: ScanBarcode, show: has("sales") },
+        { href: "/orders", label: "Pending Orders", icon: ClipboardList, show: has("sales") },
+        { href: "/sales", label: "Sales History", icon: Receipt, show: has("sales") },
+      ],
+    },
+    {
+      label: "Inventory",
+      items: [
+        { href: "/inventory", label: "Products", icon: Package, exact: true, show: inventory },
+        { href: "/inventory/quick-scan", label: "Quick Scan", icon: Zap, show: inventory },
+        { href: "/inventory/stock-in", label: "Stock In", icon: PackagePlus, show: inventory },
+        { href: "/inventory/reorder", label: "Reorder List", icon: ShoppingBasket, show: inventory },
+        { href: "/inventory/expiry", label: "Expiry Dates", icon: Hourglass, show: inventory && options.includes("expiry") },
+        { href: "/inventory/suppliers", label: "Suppliers", icon: Building2, show: inventory && options.includes("suppliers") },
+        { href: "/inventory/movements", label: "Stock Log", icon: History, show: inventory },
+      ],
+    },
+    {
+      label: "People",
+      items: [
+        { href: "/attendance", label: "Attendance", icon: CalendarClock, exact: true, show: people },
+        { href: "/time-clock", label: "Time Clock", icon: Timer, show: people },
+        { href: "/attendance/records", label: "Timesheets", icon: Sheet, show: people },
+        { href: "/employees", label: "Employees", icon: Users, show: people || fleet },
+      ],
+    },
+    {
+      label: "Fleet",
+      items: [
+        { href: "/fleet", label: "Vehicles", icon: Truck, exact: true, show: fleet },
+        { href: "/fleet/logs", label: "Trip & Fuel Logs", icon: Route, show: fleet },
+      ],
+    },
+  ]
+  return groups.map(g => ({ ...g, items: g.items.filter(i => i.show !== false) })).filter(g => g.items.length > 0)
+}
 
 export default function Nav({
   businessName,
@@ -82,13 +89,18 @@ export default function Nav({
   username,
   isAdmin,
   isPlatformAdmin = false,
+  modules,
+  options,
 }: {
   businessName: string
   logoUrl: string | null
   username: string
   isAdmin: boolean
   isPlatformAdmin?: boolean
+  modules: string[]
+  options: string[]
 }) {
+  const groups = navGroups(modules, options)
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [openedAt, setOpenedAt] = useState(pathname)
@@ -104,7 +116,7 @@ export default function Nav({
 
   const links = (
     <nav className="flex flex-col gap-5">
-      {GROUPS.map(group => (
+      {groups.map(group => (
         <div key={group.label}>
           <p className="px-5 mb-1.5 text-[0.6rem] font-bold uppercase tracking-[0.2em] faint">{group.label}</p>
           {group.items.map(item => {

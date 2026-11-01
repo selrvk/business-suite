@@ -8,6 +8,8 @@ import { formatDate, formatShortDateTime, money } from "@/lib/format"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 import type { Business } from "@/lib/types"
 import { SignOutButton } from "../sign-in-form"
+import { getPaymentDetails } from "@/lib/platform-settings"
+import { PaymentDetailsForm } from "./payment-details-form"
 import { BusinessActions, PaymentActions } from "./platform-actions"
 
 export const metadata = { title: "Platform admin" }
@@ -28,12 +30,13 @@ type Request = {
 export default async function PlatformPage() {
   await requirePlatformAdmin()
   const admin = createSupabaseAdminClient()
-  const [session, businessesResult, requestsResult, membersResult, usersResult] = await Promise.all([
+  const [session, businessesResult, requestsResult, membersResult, usersResult, paymentDetails] = await Promise.all([
     getSession(),
     admin.from("businesses").select("*").order("created_at", { ascending: false }),
     admin.from("payment_requests").select("*").order("created_at", { ascending: false }).limit(200),
     admin.from("members").select("business_id, user_id, role"),
     admin.auth.admin.listUsers({ perPage: 1000 }),
+    getPaymentDetails(),
   ])
 
   const businesses = (businessesResult.data ?? []) as Business[]
@@ -126,6 +129,14 @@ export default async function PlatformPage() {
           )}
         </div>
         <p className="text-xs faint">Check each reference number in your GCash or bank app before approving.</p>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="section-title">Payment details</h2>
+        <div className="card card-body flex flex-col gap-3">
+          <p className="text-sm muted">Every business sees this on its Billing page when it&apos;s time to pay.</p>
+          <PaymentDetailsForm instructions={paymentDetails.instructions} qrUrl={paymentDetails.qrUrl} />
+        </div>
       </section>
 
       <section className="flex flex-col gap-3 mb-10">

@@ -34,6 +34,7 @@ export function BusinessForm({ business }: { business: Business }) {
       address: String(form.get("address")),
       contact: String(form.get("contact")),
       receipt_footer: String(form.get("receipt_footer")),
+      receipt_note: String(form.get("receipt_note")),
       low_stock_threshold: Number(form.get("low_stock_threshold")),
       slug: String(form.get("slug")),
     })
@@ -62,6 +63,13 @@ export function BusinessForm({ business }: { business: Business }) {
         <label>
           <span className="label">Receipt footer</span>
           <input className="input" name="receipt_footer" defaultValue={business.receipt_footer ?? ""} placeholder="e.g. Thank you! No returns after 7 days." />
+        </label>
+        <label>
+          <span className="label">Receipt notice</span>
+          <input className="input" name="receipt_note" defaultValue={business.receipt_note ?? ""} maxLength={200} placeholder="This is not an official receipt." />
+          <span className="hint">
+            Printed in small text at the bottom. Official receipts need a BIR-registered system, so keep this unless yours is.
+          </span>
         </label>
         <label>
           <span className="label">Staff login link</span>

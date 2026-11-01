@@ -3,8 +3,9 @@ import { ScanBarcode, Timer, Truck, Zap, type LucideIcon } from "lucide-react"
 import { DbError } from "@/components/db-error"
 import { PageHeader, Stat } from "@/components/page-header"
 import { requireUser } from "@/lib/auth"
-import { hasModule } from "@/lib/config"
-import { dayRange, formatDuration, formatLongDate, formatShortDateTime, formatTime, money, monthStart, num, toYmd } from "@/lib/format"
+import { EXPIRY_SOON_DAYS, describeExpiry } from "@/lib/expiry"
+import { businessModules, hasOption } from "@/lib/features"
+import { addDays, dayRange, formatDuration, formatLongDate, formatShortDateTime, formatTime, money, monthStart, num, toYmd } from "@/lib/format"
 
 export const metadata = { title: "Dashboard" }
 
@@ -20,12 +21,14 @@ export default async function DashboardPage() {
   const today = toYmd()
   const todayRange = dayRange(today)
   const month = dayRange(monthStart(today), today)
-  const sales = hasModule("sales")
-  const inventory = hasModule("inventory")
-  const attendance = hasModule("attendance")
-  const fleet = hasModule("fleet")
+  const modules = businessModules(business)
+  const sales = modules.includes("sales")
+  const inventory = modules.includes("inventory")
+  const attendance = modules.includes("attendance")
+  const fleet = modules.includes("fleet")
+  const expiry = inventory && hasOption(business, "expiry")
 
-  const [salesToday, salesMonth, pending, recentSales, invSummary, lowItems, inNow, onRoad, monthTrips] = await Promise.all([
+  const [salesToday, salesMonth, pending, recentSales, invSummary, lowItems, inNow, onRoad, monthTrips, expiring] = await Promise.all([
     sales ? supabase.rpc("sales_summary", { p_from: todayRange.from.toISOString(), p_to: todayRange.to.toISOString() }) : none,
     sales ? supabase.rpc("sales_summary", { p_from: month.from.toISOString(), p_to: month.to.toISOString() }) : none,
     sales ? supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "PENDING") : none,
@@ -33,17 +36,24 @@ export default async function DashboardPage() {
       ? supabase.from("orders").select("id, number, customer_name, total_price, date_completed").eq("status", "COMPLETED").order("date_completed", { ascending: false }).limit(6)
       : none,
     inventory ? supabase.rpc("inventory_summary", { p_low_stock: business.low_stock_threshold }) : none,
-    inventory
-      ? supabase.from("items").select("id, name, unit, current_stock").lte("current_stock", business.low_stock_threshold).order("current_stock").limit(8)
-      : none,
+    inventory ? supabase.rpc("low_stock_items", { p_low_stock: business.low_stock_threshold, p_limit: 8 }) : none,
     attendance ? supabase.from("attendance").select("id, clock_in, employees(name)").is("clock_out", null).order("clock_in") : none,
     fleet ? supabase.from("trips").select("id, started_at, purpose, vehicles(name), employees(name)").is("ended_at", null).order("started_at") : none,
     fleet
       ? supabase.from("trips").select("start_odometer, end_odometer").not("ended_at", "is", null).gte("started_at", month.from.toISOString()).lt("started_at", month.to.toISOString())
       : none,
+    expiry
+      ? supabase
+          .from("stock_batches")
+          .select("id, quantity, expires_on, lot, items(name, unit)")
+          .gt("quantity", 0)
+          .lte("expires_on", addDays(today, EXPIRY_SOON_DAYS))
+          .order("expires_on")
+          .limit(200)
+      : none,
   ])
 
-  const error = [salesToday, salesMonth, pending, recentSales, invSummary, lowItems, inNow, onRoad, monthTrips].find(r => r.error)?.error
+  const error = [salesToday, salesMonth, pending, recentSales, invSummary, lowItems, inNow, onRoad, monthTrips, expiring].find(r => r.error)?.error
   if (error) return <DbError error={error} />
 
   const st = salesToday.data as SalesSummary | null
@@ -62,6 +72,14 @@ export default async function DashboardPage() {
     (s, t) => s + (t.end_odometer - t.start_odometer),
     0,
   )
+  const soon = (expiring.data ?? []) as unknown as {
+    id: number
+    quantity: number
+    expires_on: string
+    lot: string | null
+    items: { name: string; unit: string } | null
+  }[]
+  const expiredCount = soon.filter(b => b.expires_on < today).length
   const recent = (recentSales.data ?? []) as { id: number; number: number; customer_name: string | null; total_price: number; date_completed: string }[]
   const now = new Date()
 
@@ -91,6 +109,14 @@ export default async function DashboardPage() {
         {attendance && <Stat label="Clocked in" value={present.length} hint="Staff working now" tone="good" />}
         {fleet && <Stat label="On the road" value={road.length} hint={`${num(kmMonth)} km this month`} tone="info" />}
         {sales && <Stat label="Pending orders" value={pending.count ?? 0} tone={pending.count ? "warn" : undefined} />}
+        {expiry && (
+          <Stat
+            label="Expiring soon"
+            value={soon.length - expiredCount}
+            hint={expiredCount ? `${expiredCount} batch${expiredCount === 1 ? "" : "es"} already expired` : `Within ${EXPIRY_SOON_DAYS} days`}
+            tone={expiredCount ? "bad" : soon.length ? "warn" : "good"}
+          />
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2 mb-10">
@@ -105,9 +131,9 @@ export default async function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {inventory && (
-          <Panel title="Running low" link={{ href: "/inventory", label: "All products" }}>
+          <Panel title="Running low" link={{ href: "/inventory/reorder", label: "Reorder list" }}>
             {low.length === 0 ? (
-              <p className="text-sm faint py-4">Everything is above {business.low_stock_threshold}. Nice.</p>
+              <p className="text-sm faint py-4">Everything is above its low-stock level. Nice.</p>
             ) : (
               low.map(i => (
                 <div key={i.id} className="list-row text-sm">
@@ -117,6 +143,32 @@ export default async function DashboardPage() {
                   </span>
                 </div>
               ))
+            )}
+          </Panel>
+        )}
+
+        {expiry && (
+          <Panel title="Expiring soon" link={{ href: "/inventory/expiry", label: "Expiry dates" }}>
+            {soon.length === 0 ? (
+              <p className="text-sm faint py-4">Nothing expires in the next {EXPIRY_SOON_DAYS} days.</p>
+            ) : (
+              soon.slice(0, 8).map(b => {
+                const e = describeExpiry(b.expires_on, today)
+                return (
+                  <div key={b.id} className="list-row text-sm">
+                    <span className="flex-1 text-white truncate">
+                      {b.items?.name}
+                      {b.lot && <span className="faint text-xs"> · lot {b.lot}</span>}
+                    </span>
+                    <span className="muted text-xs">
+                      {num(b.quantity)} {b.items?.unit}
+                    </span>
+                    <span className="pill" data-tone={e.tone}>
+                      {e.text}
+                    </span>
+                  </div>
+                )
+              })
             )}
           </Panel>
         )}

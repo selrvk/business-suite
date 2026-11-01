@@ -6,6 +6,7 @@ import { PageHeader, Stat } from "@/components/page-header"
 import { requireModule, requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
 import { fetchAll } from "@/lib/db"
+import { customFields, hasOption } from "@/lib/features"
 import { money, num, toYmd } from "@/lib/format"
 import type { Item } from "@/lib/types"
 import { AddProductButton, ProductsTable } from "./products-table"
@@ -13,20 +14,45 @@ import { AddProductButton, ProductsTable } from "./products-table"
 export const metadata = { title: "Products" }
 
 export default async function InventoryPage() {
-  requireModule("inventory")
+  await requireModule("inventory")
   const supabase = await getSupabase()
-  const [{ isAdmin, business }, { data: items, error }] = await Promise.all([
-    requireUser(),
-    fetchAll<Item>((from, to) => supabase.from("items").select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell").order("id").range(from, to)),
+  const { isAdmin, business } = await requireUser()
+  const showSuppliers = hasOption(business, "suppliers")
+  const showExpiry = hasOption(business, "expiry")
+  const fields = customFields(business)
+  const none = Promise.resolve({ data: [] as never[], error: null })
+  const [{ data: items, error }, supplierRows, batchRows] = await Promise.all([
+    fetchAll<Item>((from, to) =>
+      supabase
+        .from("items")
+        .select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell, supplier_id, category, location, reorder_level, extra")
+        .order("id")
+        .range(from, to),
+    ),
+    showSuppliers ? supabase.from("suppliers").select("id, name") : none,
+    showExpiry
+      ? fetchAll<{ item_id: number; expires_on: string }>((from, to) =>
+          supabase.from("stock_batches").select("item_id, expires_on").gt("quantity", 0).not("expires_on", "is", null).order("id").range(from, to),
+        )
+      : none,
   ])
-  if (error) return <DbError error={error} />
+  const failed = error ?? supplierRows.error ?? batchRows.error
+  if (failed) return <DbError error={failed} />
+
+  const suppliers: Record<number, string> = Object.fromEntries(((supplierRows.data ?? []) as { id: number; name: string }[]).map(r => [r.id, r.name]))
+  // Each product's nearest expiry date.
+  const expiry: Record<number, string> = {}
+  for (const b of (batchRows.data ?? []) as { item_id: number; expires_on: string }[]) {
+    if (!expiry[b.item_id] || b.expires_on < expiry[b.item_id]) expiry[b.item_id] = b.expires_on
+  }
 
   const low = business.low_stock_threshold
   const units = items.reduce((sum, i) => sum + Math.max(0, i.current_stock), 0)
   const costValue = items.reduce((sum, i) => sum + Math.max(0, i.current_stock) * i.price_buy, 0)
-  const lowCount = items.filter(i => i.current_stock > 0 && i.current_stock <= low).length
+  const lowCount = items.filter(i => i.current_stock > 0 && i.current_stock <= (i.reorder_level ?? low)).length
   const outCount = items.filter(i => i.current_stock <= 0).length
 
+  // Same column names the importer understands, so this file can be edited and imported back.
   const exportRows = items.map(i => ({
     Barcode: i.barcode ?? "",
     Name: i.name,
@@ -35,6 +61,12 @@ export default async function InventoryPage() {
     Unit: i.unit,
     Cost: i.price_buy,
     Price: i.price_sell,
+    ...(showSuppliers ? { Supplier: i.supplier_id ? (suppliers[i.supplier_id] ?? "") : "" } : {}),
+    ...(hasOption(business, "categories") ? { Category: i.category ?? "" } : {}),
+    ...(hasOption(business, "locations") ? { Location: i.location ?? "" } : {}),
+    "Low-stock level": i.reorder_level ?? "",
+    ...Object.fromEntries(fields.map(f => [f.label, i.extra?.[f.id] ?? ""])),
+    ...(showExpiry ? { "Nearest expiry": expiry[i.id] ?? "" } : {}),
     "Stock value (cost)": +(i.current_stock * i.price_buy).toFixed(2),
     "Stock value (price)": +(i.current_stock * i.price_sell).toFixed(2),
   }))
@@ -60,11 +92,11 @@ export default async function InventoryPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
         <Stat label="Products" value={num(items.length)} hint={`${num(units)} units on hand`} />
         <Stat label="Stock value (cost)" value={money(costValue)} tone="info" />
-        <Stat label="Low stock" value={lowCount} tone={lowCount ? "warn" : "good"} hint={`${low} or fewer left`} />
+        <Stat label="Low stock" value={lowCount} tone={lowCount ? "warn" : "good"} hint="At or below their low-stock level" />
         <Stat label="Out of stock" value={outCount} tone={outCount ? "bad" : "good"} />
       </div>
 
-      <ProductsTable items={items} isAdmin={isAdmin} lowStock={low} />
+      <ProductsTable items={items} isAdmin={isAdmin} suppliers={suppliers} expiry={expiry} />
     </>
   )
 }

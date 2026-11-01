@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { guard } from "@/lib/auth"
 import { dbMessage } from "@/lib/db"
+import { customFields, type CustomField } from "@/lib/features"
 import { MAX_IMPORT_ROWS, cleanImportRow, duplicateProblems, rowProblem, type ImportRow } from "@/lib/product-import"
 import type { ActionResult, StockReason } from "@/lib/types"
 
@@ -39,6 +40,13 @@ export async function importProducts(
       stock: r.stock,
       price_buy: r.price_buy,
       price_sell: r.price_sell,
+      supplier: r.supplier,
+      category: r.category,
+      location: r.location,
+      reorder_level: r.reorder_level,
+      extra: r.extra,
+      expires_on: r.expires_on,
+      lot: r.lot,
     })),
     p_set_stock: setStock === true,
   })
@@ -55,9 +63,44 @@ export type ProductInput = {
   price_buy: number
   price_sell: number
   current_stock: number
+  // Optional details, sent only when the business uses them. Left out = keep what's saved.
+  supplier_id?: number | null
+  category?: string
+  location?: string
+  reorder_level?: number | null
+  /** Custom field values, by field id. */
+  extra?: Record<string, string>
+  /** For a new product's opening stock, when expiry dates are on. */
+  expires_on?: string
+  lot?: string
 }
 
-function clean(input: ProductInput) {
+const YMD = /^\d{4}-\d{2}-\d{2}$/
+
+/** Checks custom field values against the business's fields. Unknown fields are dropped. */
+function cleanExtra(extra: Record<string, string> | undefined, fields: CustomField[]) {
+  if (!extra) return undefined
+  const out: Record<string, string | number | null> = {}
+  for (const field of fields) {
+    if (!(field.id in extra)) continue
+    const raw = String(extra[field.id] ?? "").trim()
+    if (!raw) {
+      out[field.id] = null
+    } else if (field.type === "number") {
+      const n = Number(raw.replace(/,/g, ""))
+      if (!Number.isFinite(n)) return { error: `${field.label} must be a number.` }
+      out[field.id] = n
+    } else if (field.type === "date") {
+      if (!YMD.test(raw)) return { error: `${field.label} must be a date.` }
+      out[field.id] = raw
+    } else {
+      out[field.id] = raw.slice(0, 200)
+    }
+  }
+  return out
+}
+
+function clean(input: ProductInput, fields: CustomField[]) {
   const name = input.name.trim()
   const price_buy = Number(input.price_buy)
   const price_sell = Number(input.price_sell)
@@ -66,6 +109,20 @@ function clean(input: ProductInput) {
   if (!Number.isFinite(price_buy) || price_buy < 0) return { error: "Cost must be zero or more." }
   if (!Number.isFinite(price_sell) || price_sell < 0) return { error: "Selling price must be zero or more." }
   if (!Number.isInteger(current_stock) || current_stock < 0) return { error: "Stock must be a whole number, zero or more." }
+
+  const optional: Record<string, string | number | null> = {}
+  if (input.supplier_id !== undefined) optional.supplier_id = Number.isInteger(input.supplier_id) && input.supplier_id! > 0 ? input.supplier_id! : null
+  if (input.category !== undefined) optional.category = input.category.trim().slice(0, 60) || null
+  if (input.location !== undefined) optional.location = input.location.trim().slice(0, 60) || null
+  if (input.reorder_level !== undefined) {
+    const level = input.reorder_level
+    if (level !== null && (!Number.isInteger(level) || level < 0)) return { error: "Low-stock level must be a whole number, zero or more." }
+    optional.reorder_level = level
+  }
+  const extra = cleanExtra(input.extra, fields)
+  if (extra && "error" in extra) return { error: extra.error as string }
+  if (input.expires_on && !YMD.test(input.expires_on)) return { error: "Pick a valid expiry date." }
+
   return {
     fields: {
       name,
@@ -74,8 +131,11 @@ function clean(input: ProductInput) {
       unit: input.unit.trim().toLowerCase() || "pieces",
       price_buy,
       price_sell,
+      ...optional,
     },
+    extra: extra as Record<string, string | number | null> | undefined,
     current_stock,
+    batch: input.expires_on || input.lot?.trim() ? { expires_on: input.expires_on || null, lot: input.lot?.trim() || null } : null,
   }
 }
 
@@ -83,16 +143,25 @@ function refresh() {
   revalidatePath("/", "layout")
 }
 
+/** Choices for the product form: suppliers, and categories and locations already in use. */
+export async function productChoices(): Promise<ActionResult<{ suppliers: { id: number; name: string }[]; categories: string[]; locations: string[] }>> {
+  const g = await guard({ allowExpired: true })
+  if (!g.ok) return g
+  const { data, error } = await g.session.supabase.rpc("product_choices")
+  if (error) return { ok: false, error: dbMessage(error) }
+  return { ok: true, data }
+}
+
 export async function addProduct(input: ProductInput): Promise<ActionResult<{ id: number }>> {
   const g = await guard()
   if (!g.ok) return g
-  const product = clean(input)
+  const product = clean(input, customFields(g.session.business))
   if ("error" in product) return { ok: false, error: product.error! }
 
   const { supabase } = g.session
   const { data, error } = await supabase
     .from("items")
-    .insert({ ...product.fields, current_stock: 0 })
+    .insert({ ...product.fields, extra: product.extra ?? {}, current_stock: 0 })
     .select("id")
     .single()
   if (error) return { ok: false, error: dbMessage(error) }
@@ -104,6 +173,15 @@ export async function addProduct(input: ProductInput): Promise<ActionResult<{ id
       p_reason: "initial",
     })
     if (stockError) return { ok: false, error: dbMessage(stockError) }
+    if (product.batch) {
+      const { error: batchError } = await supabase.rpc("record_batch", {
+        p_item_id: data.id,
+        p_quantity: product.current_stock,
+        p_expires_on: product.batch.expires_on,
+        p_lot: product.batch.lot,
+      })
+      if (batchError) return { ok: false, error: dbMessage(batchError) }
+    }
   }
 
   refresh()
@@ -117,11 +195,20 @@ export async function addProduct(input: ProductInput): Promise<ActionResult<{ id
 export async function updateProduct(id: number, input: ProductInput, stockShown: number): Promise<ActionResult> {
   const g = await guard()
   if (!g.ok) return g
-  const product = clean(input)
+  const product = clean(input, customFields(g.session.business))
   if ("error" in product) return { ok: false, error: product.error! }
 
   const { supabase } = g.session
-  const { error } = await supabase.from("items").update(product.fields).eq("id", id)
+  let extra: Record<string, unknown> | undefined
+  if (product.extra) {
+    // Merge, so values of fields that are hidden right now are kept.
+    const { data: saved } = await supabase.from("items").select("extra").eq("id", id).maybeSingle()
+    extra = { ...((saved?.extra as Record<string, unknown>) ?? {}), ...product.extra }
+  }
+  const { error } = await supabase
+    .from("items")
+    .update({ ...product.fields, ...(extra ? { extra } : {}) })
+    .eq("id", id)
   if (error) return { ok: false, error: dbMessage(error) }
 
   const change = product.current_stock - stockShown
@@ -164,11 +251,20 @@ export async function adjustStock(id: number, change: number, reason: StockReaso
   return { ok: true, data: data as number }
 }
 
-export async function receiveStock(lines: { item_id: number; quantity: number }[], note: string): Promise<ActionResult<number>> {
+export type ReceiveLine = { item_id: number; quantity: number; expires_on?: string; lot?: string }
+
+/** Stock In: a delivery, optionally from a supplier, with expiry dates and lot numbers per line. */
+export async function receiveStock(lines: ReceiveLine[], note: string, supplierId: number | null = null): Promise<ActionResult<number>> {
   const g = await guard()
   if (!g.ok) return g
   if (!lines.length) return { ok: false, error: "Scan or add at least one product." }
-  const { data, error } = await g.session.supabase.rpc("receive_stock", { p_items: lines, p_note: note })
+  for (const line of lines) {
+    if (line.expires_on && !YMD.test(line.expires_on)) return { ok: false, error: "One of the expiry dates isn't a valid date." }
+    if (line.lot && line.lot.length > 60) return { ok: false, error: "Lot numbers can be up to 60 characters." }
+  }
+  const items = lines.map(l => ({ item_id: l.item_id, quantity: l.quantity, expires_on: l.expires_on || null, lot: l.lot?.trim() || null }))
+  const supplier = Number.isInteger(supplierId) && supplierId! > 0 ? supplierId : null
+  const { data, error } = await g.session.supabase.rpc("receive_stock", { p_items: items, p_note: note, p_supplier_id: supplier })
   if (error) return { ok: false, error: dbMessage(error) }
   refresh()
   return { ok: true, data: data as number }

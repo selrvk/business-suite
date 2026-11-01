@@ -1,13 +1,16 @@
 "use client"
 
-import { useState } from "react"
-import { Wand2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Wand2, X } from "lucide-react"
+import { useBusinessFeatures } from "@/components/business-features"
 import { Modal } from "@/components/modal"
 import { codeFieldProps } from "@/components/scan-input"
 import { generateProductBarcode } from "@/components/barcode"
 import { currencySymbol } from "@/lib/format"
 import type { Item, StockReason } from "@/lib/types"
-import { addProduct, adjustStock, updateProduct, type ProductInput } from "./actions"
+import type { ProductOption } from "@/lib/features"
+import { addProduct, adjustStock, productChoices, updateProduct, type ProductInput } from "./actions"
+import { quickAddSupplier } from "./suppliers/actions"
 
 export const UNIT_SUGGESTIONS = [
   "pieces", "boxes", "packs", "sets", "rolls", "bottles", "cans", "sacks", "bags",
@@ -29,12 +32,14 @@ export function ProductModal({
   onSaved?: (id: number) => void
 }) {
   return (
-    <Modal open={open} onClose={onClose} title={item ? "Edit product" : "Add product"} width={480}>
+    <Modal open={open} onClose={onClose} title={item ? "Edit product" : "Add product"} width={540}>
       {/* Keyed so the form resets each time it opens for a different product. */}
       <ProductForm key={item?.id ?? `new-${initialBarcode}`} item={item} initialBarcode={initialBarcode} onClose={onClose} onSaved={onSaved} />
     </Modal>
   )
 }
+
+type Choices = { suppliers: { id: number; name: string }[]; categories: string[]; locations: string[] }
 
 function ProductForm({
   item,
@@ -47,22 +52,48 @@ function ProductForm({
   onClose: () => void
   onSaved?: (id: number) => void
 }) {
+  const { options, customFields, lowStock } = useBusinessFeatures()
+  const has = (o: ProductOption) => options.includes(o)
   const [barcode, setBarcode] = useState(item?.barcode ?? initialBarcode)
+  const [supplierId, setSupplierId] = useState<number | null>(item?.supplier_id ?? null)
+  const [openingStock, setOpeningStock] = useState(String(item?.current_stock ?? 0))
+  const [choices, setChoices] = useState<Choices>({ suppliers: [], categories: [], locations: [] })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const sym = currencySymbol()
 
+  // Load suppliers and the categories/locations already in use, for the pickers.
+  const needsChoices = has("suppliers") || has("categories") || has("locations")
+  useEffect(() => {
+    if (!needsChoices) return
+    let live = true
+    productChoices().then(result => {
+      if (live && result.ok) setChoices(result.data)
+    })
+    return () => {
+      live = false
+    }
+  }, [needsChoices])
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
+    const text = (key: string) => String(form.get(key) ?? "")
+    const level = text("reorder_level").trim()
     const input: ProductInput = {
-      name: String(form.get("name")),
-      brand: String(form.get("brand")),
+      name: text("name"),
+      brand: text("brand"),
       barcode,
-      unit: String(form.get("unit")),
+      unit: text("unit"),
       price_buy: Number(form.get("price_buy")),
       price_sell: Number(form.get("price_sell")),
       current_stock: Number(form.get("current_stock")),
+      reorder_level: level === "" ? null : Number(level),
+      ...(has("suppliers") ? { supplier_id: supplierId } : {}),
+      ...(has("categories") ? { category: text("category") } : {}),
+      ...(has("locations") ? { location: text("location") } : {}),
+      ...(customFields.length ? { extra: Object.fromEntries(customFields.map(f => [f.id, text(`extra_${f.id}`)])) } : {}),
+      ...(!item && has("expiry") ? { expires_on: text("expires_on"), lot: text("lot") } : {}),
     }
     setBusy(true)
     setError(null)
@@ -71,6 +102,11 @@ function ProductForm({
     if (!result.ok) return setError(result.error)
     onSaved?.(item?.id ?? (result.data as { id: number }).id)
     onClose()
+  }
+
+  const extraValue = (id: string) => {
+    const v = item?.extra?.[id]
+    return v === null || v === undefined ? "" : String(v)
   }
 
   return (
@@ -126,10 +162,83 @@ function ProductForm({
         </label>
         <label>
           <span className="label">{item ? "In stock" : "Opening stock"}</span>
-          <input className="input" name="current_stock" type="number" step="1" min="0" defaultValue={item?.current_stock ?? 0} required />
+          <input
+            className="input"
+            name="current_stock"
+            type="number"
+            step="1"
+            min="0"
+            value={openingStock}
+            onChange={e => setOpeningStock(e.target.value)}
+            required
+          />
         </label>
       </div>
       {item && <p className="hint -mt-2">Changing the stock here is logged as a correction. For deliveries, use Stock In.</p>}
+
+      {!item && has("expiry") && Number(openingStock) > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <label>
+            <span className="label">Expiry date</span>
+            <input className="input" name="expires_on" type="date" />
+          </label>
+          <label>
+            <span className="label">Lot / batch no.</span>
+            <input className="input" name="lot" placeholder="Optional" maxLength={60} />
+          </label>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        {has("suppliers") && (
+          <SupplierPicker
+            value={supplierId}
+            onChange={setSupplierId}
+            suppliers={choices.suppliers}
+            onAdded={s => setChoices(c => ({ ...c, suppliers: [...c.suppliers, s].sort((a, b) => a.name.localeCompare(b.name)) }))}
+          />
+        )}
+        {has("categories") && (
+          <label>
+            <span className="label">Category</span>
+            <input className="input" name="category" list="category-choices" defaultValue={item?.category ?? ""} placeholder="e.g. Drinks" maxLength={60} />
+            <datalist id="category-choices">
+              {choices.categories.map(c => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </label>
+        )}
+        {has("locations") && (
+          <label>
+            <span className="label">Shelf / location</span>
+            <input className="input" name="location" list="location-choices" defaultValue={item?.location ?? ""} placeholder="e.g. Shelf A2" maxLength={60} />
+            <datalist id="location-choices">
+              {choices.locations.map(l => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+          </label>
+        )}
+        <label>
+          <span className="label">Low-stock level</span>
+          <input className="input" name="reorder_level" type="number" min="0" step="1" defaultValue={item?.reorder_level ?? ""} placeholder={`Default: ${lowStock}`} />
+        </label>
+        {customFields.map(f => (
+          <label key={f.id}>
+            <span className="label">{f.label}</span>
+            <input
+              className="input"
+              name={`extra_${f.id}`}
+              type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
+              step={f.type === "number" ? "any" : undefined}
+              defaultValue={extraValue(f.id)}
+              maxLength={f.type === "text" ? 200 : undefined}
+            />
+          </label>
+        ))}
+      </div>
+      {item && has("expiry") && <p className="hint -mt-2">Expiry dates are kept per delivery: enter them in Stock In, or see Expiry Dates.</p>}
 
       <div className="modal-footer">
         <button type="button" className="btn btn-secondary" onClick={onClose}>
@@ -140,6 +249,89 @@ function ProductForm({
         </button>
       </div>
     </form>
+  )
+}
+
+/** Supplier dropdown, with a quick way to add a new one without leaving the form. */
+export function SupplierPicker({
+  value,
+  onChange,
+  suppliers,
+  onAdded,
+  label = "Supplier",
+}: {
+  value: number | null
+  onChange: (id: number | null) => void
+  suppliers: { id: number; name: string }[]
+  onAdded: (supplier: { id: number; name: string }) => void
+  label?: string
+}) {
+  const [adding, setAdding] = useState(false)
+  const [name, setName] = useState("")
+  const [error, setError] = useState<string | null>(null)
+
+  async function add() {
+    setError(null)
+    const result = await quickAddSupplier(name)
+    if (!result.ok) return setError(result.error)
+    onAdded(result.data)
+    onChange(result.data.id)
+    setAdding(false)
+    setName("")
+  }
+
+  if (adding) {
+    return (
+      <div>
+        <span className="label">New supplier</span>
+        <div className="flex gap-1.5">
+          <input
+            className="input"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Supplier name"
+            maxLength={120}
+            autoFocus
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                add()
+              }
+            }}
+          />
+          <button type="button" className="btn btn-primary btn-sm shrink-0" onClick={add} disabled={!name.trim()}>
+            Add
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm shrink-0" onClick={() => setAdding(false)} aria-label="Cancel">
+            <X size={13} />
+          </button>
+        </div>
+        {error && <p className="hint text-bad">{error}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <label>
+      <span className="label">{label}</span>
+      <select
+        className="input"
+        value={value ?? ""}
+        onChange={e => {
+          if (e.target.value === "new") return setAdding(true)
+          onChange(e.target.value ? Number(e.target.value) : null)
+        }}
+      >
+        <option value="">None</option>
+        {suppliers.map(s => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+        {value && !suppliers.some(s => s.id === value) && <option value={value}>Loading…</option>}
+        <option value="new">+ Add a new supplier</option>
+      </select>
+    </label>
   )
 }
 

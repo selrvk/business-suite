@@ -15,7 +15,7 @@ export default async function TimesheetsPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string; employee?: string }>
 }) {
-  requireModule("attendance")
+  await requireModule("attendance")
   const params = await searchParams
   const supabase = await getSupabase()
   const today = toYmd()

@@ -5,9 +5,10 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, Download, FileSpreadsheet, Upload } from "lucide-react"
 import { money, num } from "@/lib/format"
+import { useBusinessFeatures } from "@/components/business-features"
 import {
-  IMPORT_FIELDS,
   MAX_IMPORT_ROWS,
+  importFields,
   findHeader,
   planRows,
   readRows,
@@ -30,36 +31,41 @@ const STATUS: Record<Kind, { label: string; tone?: string }> = {
   problem: { label: "Problem", tone: "bad" },
 }
 
-const FIELD_HELP: Record<ImportField, string> = {
-  name: "Name (required)",
-  barcode: "Barcode",
-  brand: "Brand",
-  unit: "Unit (pieces, boxes…)",
-  stock: "Stock",
-  price_buy: "Cost (what you pay)",
-  price_sell: "Price (what you charge)",
-}
 
 /** Spreadsheet column letters: 0 → A, 26 → AA. */
 function columnLetter(i: number): string {
   return (i >= 26 ? columnLetter(Math.floor(i / 26) - 1) : "") + String.fromCharCode(65 + (i % 26))
 }
 
-async function downloadTemplate() {
+/** A template with the columns this business uses, and two example rows. */
+async function downloadTemplate(options: readonly string[], customLabels: string[]) {
   const XLSX = await import("xlsx")
-  const ws = XLSX.utils.aoa_to_sheet([
-    ["Barcode", "Name", "Brand", "Unit", "Stock", "Cost", "Price"],
-    ["4800000000017", "Bottled water 500ml", "", "bottles", 48, 9.5, 15],
-    ["", "Rice 25kg", "", "sacks", 6, 1150, 1300],
-  ])
-  ws["!cols"] = [16, 28, 14, 10, 8, 10, 10].map(wch => ({ wch }))
+  const columns: [string, string | number, string | number][] = [
+    ["Barcode", "4800000000017", ""],
+    ["Name", "Bottled water 500ml", "Rice 25kg"],
+    ["Brand", "", ""],
+    ["Unit", "bottles", "sacks"],
+    ["Stock", 48, 6],
+    ["Cost", 9.5, 1150],
+    ["Price", 15, 1300],
+    ...(options.includes("suppliers") ? ([["Supplier", "Aqua Distributors", "Bigas Trading"]] as [string, string, string][]) : []),
+    ...(options.includes("categories") ? ([["Category", "Drinks", "Rice and grains"]] as [string, string, string][]) : []),
+    ...(options.includes("locations") ? ([["Location", "Shelf A1", "Storage"]] as [string, string, string][]) : []),
+    ["Low-stock level", 24, ""],
+    ...(options.includes("expiry") ? ([["Expiry date", "2027-06-30", ""], ["Lot", "W-0612", ""]] as [string, string, string][]) : []),
+    ...customLabels.map(label => [label, "", ""] as [string, string, string]),
+  ]
+  const ws = XLSX.utils.aoa_to_sheet([columns.map(c => c[0]), columns.map(c => c[1]), columns.map(c => c[2])])
+  ws["!cols"] = columns.map(c => ({ wch: Math.max(10, c[0].length + 2, String(c[1]).length + 2) }))
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, "Products")
   XLSX.writeFile(wb, "products_template.xlsx")
 }
 
-export function ProductImport({ items }: { items: Item[] }) {
+export function ProductImport({ items, suppliers }: { items: Item[]; suppliers: Record<number, string> }) {
   const router = useRouter()
+  const { options, customFields } = useBusinessFeatures()
+  const offered = useMemo(() => importFields(options, customFields), [options, customFields])
   const inputRef = useRef<HTMLInputElement>(null)
   const [sheet, setSheet] = useState<Sheet | null>(null)
   const [mapping, setMapping] = useState<(ImportField | null)[]>([])
@@ -71,8 +77,8 @@ export function ProductImport({ items }: { items: Item[] }) {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<Done | null>(null)
 
-  const rows = useMemo(() => (sheet ? readRows(sheet.cells, sheet.headerIndex, mapping, sheet.firstLine) : []), [sheet, mapping])
-  const plans = useMemo(() => planRows(rows, items, setStock), [rows, items, setStock])
+  const rows = useMemo(() => (sheet ? readRows(sheet.cells, sheet.headerIndex, mapping, customFields, sheet.firstLine) : []), [sheet, mapping, customFields])
+  const plans = useMemo(() => planRows(rows, items, setStock, { suppliers, customFields }), [rows, items, setStock, suppliers, customFields])
   const counts = useMemo(() => {
     const c: Record<Kind, number> = { new: 0, update: 0, same: 0, problem: 0 }
     for (const p of plans) c[p.kind]++
@@ -97,7 +103,7 @@ export function ProductImport({ items }: { items: Item[] }) {
         const ws = wb.Sheets[sheetName]
         const cells = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null, blankrows: true })
         if (!cells.some(r => r.some(c => text(c)))) continue
-        const header = findHeader(cells)
+        const header = findHeader(cells, offered)
         const firstLine = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]).s.r + 1 : 1
         const found = { sheet: { fileName: file.name, sheetName, cells, headerIndex: header.index, headers: header.headers, firstLine }, mapping: header.mapping }
         if (!chosen) chosen = found
@@ -182,7 +188,7 @@ export function ProductImport({ items }: { items: Item[] }) {
               <button type="button" className="btn btn-primary" onClick={() => inputRef.current?.click()} disabled={reading || saving}>
                 <Upload size={14} /> {reading ? "Reading…" : sheet ? "Choose another file" : "Choose a file"}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={downloadTemplate}>
+              <button type="button" className="btn btn-secondary" onClick={() => downloadTemplate(options, customFields.map(f => f.label))}>
                 <Download size={14} /> Download a template
               </button>
             </div>
@@ -198,7 +204,8 @@ export function ProductImport({ items }: { items: Item[] }) {
             />
           </div>
           <ul className="text-xs faint flex flex-col gap-1 list-disc pl-4">
-            <li>Columns it looks for: Name (required), Barcode, Brand, Unit, Stock, Cost, Price. Other columns are ignored.</li>
+            <li>Columns it looks for: {offered.map(f => f.label.replace(" (required)", "")).join(", ")}. Name is required; other columns are ignored.</li>
+            {options.includes("expiry") && <li>Expiry dates in the file are used for new products&apos; opening stock. For deliveries, use Stock In.</li>}
             <li>Products you already have are matched by barcode, or by name when a row has no barcode. Empty cells leave the saved value alone.</li>
             <li>To edit many products at once: export them from the Products page, change the file, and import it here.</li>
           </ul>
@@ -228,9 +235,9 @@ export function ProductImport({ items }: { items: Item[] }) {
                         onChange={e => choose(i, (e.target.value || null) as ImportField | null)}
                       >
                         <option value="">Don&apos;t import</option>
-                        {IMPORT_FIELDS.map(f => (
+                        {offered.map(f => (
                           <option key={f.key} value={f.key}>
-                            {FIELD_HELP[f.key]}
+                            {f.label}
                           </option>
                         ))}
                       </select>

@@ -12,6 +12,12 @@ export type Business = {
   trial_ends_at: string
   paid_until: string | null
   created_at: string
+  /** See lib/features.ts. modules null = every module. */
+  business_type: string | null
+  modules: string[] | null
+  options: string[] | null
+  custom_fields: unknown
+  receipt_note: string | null
 }
 
 export type Role = "owner" | "admin" | "staff"
@@ -25,6 +31,33 @@ export type Item = {
   current_stock: number
   price_buy: number
   price_sell: number
+  supplier_id?: number | null
+  category?: string | null
+  location?: string | null
+  /** This product's low-stock level; null = the business's. */
+  reorder_level?: number | null
+  /** Custom field values, by field id. */
+  extra?: Record<string, string | number | null>
+}
+
+export type Supplier = {
+  id: number
+  name: string
+  contact_person: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  notes: string | null
+}
+
+export type Batch = {
+  id: number
+  item_id: number
+  quantity: number
+  expires_on: string | null
+  lot: string | null
+  supplier_id: number | null
+  received_at: string
 }
 
 export type OrderStatus = "PENDING" | "COMPLETED" | "CANCELLED"

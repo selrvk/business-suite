@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation"
 import { getSupabase } from "./supabase/server"
 import { createSupabaseAdminClient } from "./supabase/admin"
 import { hasModule, type ModuleKey } from "./config"
+import { businessModules, hasOption, type ProductOption } from "./features"
 import type { Business, Role } from "./types"
 
 export type Session = {
@@ -136,9 +137,17 @@ export async function requireAdminPage() {
   return session
 }
 
-/** For pages: 404s when the module isn't part of this deployment. */
-export function requireModule(module: ModuleKey) {
+/** For pages: 404s when the module isn't offered here or the business turned it off. */
+export async function requireModule(module: ModuleKey) {
   if (!hasModule(module)) notFound()
+  const session = await getSession()
+  if (session && !businessModules(session.business).includes(module)) notFound()
+}
+
+/** For pages of optional product details (suppliers, expiry...): 404s when the business hasn't turned it on. */
+export async function requireOption(option: ProductOption) {
+  const session = await getSession()
+  if (session && !hasOption(session.business, option)) notFound()
 }
 
 /**

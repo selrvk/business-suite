@@ -38,7 +38,7 @@ export default async function MovementsPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string; reason?: string; q?: string }>
 }) {
-  requireModule("inventory")
+  await requireModule("inventory")
   const params = await searchParams
   const supabase = await getSupabase()
   const today = toYmd()

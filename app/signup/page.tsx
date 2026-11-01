@@ -11,6 +11,7 @@ export default async function SignUpPage() {
   if (await getSession()) redirect("/dashboard")
   return (
     <AuthCard
+      wide
       title="Start free"
       subtitle={`${config.trialDays} days free · no payment needed`}
       footer={

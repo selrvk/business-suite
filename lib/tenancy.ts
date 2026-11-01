@@ -24,10 +24,19 @@ function ownerUsername(email: string) {
  * Server-only: uses the service role. Removes the business again if the
  * owner can't be attached, so nothing is left half-made.
  */
-export async function createBusinessFor(userId: string, email: string, businessName: string) {
+export async function createBusinessFor(
+  userId: string,
+  email: string,
+  businessName: string,
+  features?: { business_type: string | null; modules: string[]; options: string[] },
+) {
   const admin = createSupabaseAdminClient()
   const slug = await freeSlug(admin, slugify(businessName))
-  const { data: business, error } = await admin.from("businesses").insert({ name: businessName, slug }).select("id").single()
+  const { data: business, error } = await admin
+    .from("businesses")
+    .insert({ name: businessName, slug, ...(features ?? {}) })
+    .select("id")
+    .single()
   if (error) throw error
   const { error: memberError } = await admin
     .from("members")

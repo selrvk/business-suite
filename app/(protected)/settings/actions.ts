@@ -4,6 +4,7 @@ import { revalidatePath, updateTag } from "next/cache"
 import { guard, type Session } from "@/lib/auth"
 import { USERNAME_PATTERN, staffEmail } from "@/lib/config"
 import { dbMessage } from "@/lib/db"
+import { cleanFeatures, type FeaturesInput } from "@/lib/features"
 import { BUSY, loginLockout, passwordIsRight } from "@/lib/login"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 import type { ActionResult } from "@/lib/types"
@@ -19,6 +20,7 @@ export type BusinessInput = {
   address: string
   contact: string
   receipt_footer: string
+  receipt_note: string
   low_stock_threshold: number
 }
 
@@ -42,6 +44,7 @@ export async function updateBusiness(input: BusinessInput): Promise<ActionResult
       address: input.address.trim() || null,
       contact: input.contact.trim() || null,
       receipt_footer: input.receipt_footer.trim() || null,
+      receipt_note: input.receipt_note.trim().slice(0, 200) || null,
       low_stock_threshold: threshold,
     })
     .eq("id", business.id)
@@ -223,6 +226,19 @@ export async function removeUser(userId: string): Promise<ActionResult> {
   if (target.role === "owner") return { ok: false, error: "The owner can't be removed." }
   const { error } = await createSupabaseAdminClient().auth.admin.deleteUser(userId) // removes the membership too
   if (error) return { ok: false, error: error.message }
+  refresh()
+  return { ok: true, data: null }
+}
+
+/** Settings → Features: which parts of the suite and which product details this business uses. */
+export async function updateFeatures(input: FeaturesInput): Promise<ActionResult> {
+  const g = await guard({ admin: true, allowExpired: true })
+  if (!g.ok) return g
+  const features = cleanFeatures(input)
+  if ("error" in features) return { ok: false, error: features.error }
+  const { supabase, business } = g.session
+  const { error } = await supabase.from("businesses").update(features).eq("id", business.id)
+  if (error) return { ok: false, error: dbMessage(error) }
   refresh()
   return { ok: true, data: null }
 }

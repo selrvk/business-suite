@@ -2,7 +2,9 @@ import { headers } from "next/headers"
 import { Blocks, Building2, Link2, Shield, User } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { requireUser } from "@/lib/auth"
-import { ALL_MODULES, MODULE_INFO, config } from "@/lib/config"
+import { MODULE_INFO, config } from "@/lib/config"
+import { OPTION_INFO, businessModules, customFields, type BusinessType, type ProductOption } from "@/lib/features"
+import { FeaturesForm } from "./features-form"
 import { BusinessForm, CopyLink, PasswordForm, Users, type UserRow } from "./settings-forms"
 
 export const metadata = { title: "Settings" }
@@ -50,6 +52,25 @@ export default async function SettingsPage() {
         )}
 
         {isAdmin && (
+          <section className="card" id="features">
+            <div className="card-header">
+              <Blocks size={15} className="text-brand" />
+              <h2 className="display text-xl text-white">Features</h2>
+            </div>
+            <div className="card-body">
+              <FeaturesForm
+                initial={{
+                  businessType: (business.business_type as BusinessType | null) ?? null,
+                  modules: businessModules(business),
+                  options: (business.options ?? []) as ProductOption[],
+                }}
+                initialFields={customFields(business)}
+              />
+            </div>
+          </section>
+        )}
+
+        {isAdmin && (
           <section className="card">
             <div className="card-header">
               <Shield size={15} className="text-brand" />
@@ -75,25 +96,28 @@ export default async function SettingsPage() {
           </div>
         </section>
 
-        <section className="card">
-          <div className="card-header">
-            <Blocks size={15} className="muted" />
-            <h2 className="display text-xl text-white">Included</h2>
-          </div>
-          <div className="card-body grid sm:grid-cols-2 gap-3">
-            {ALL_MODULES.filter(m => config.modules.includes(m)).map(m => (
-              <div key={m} className="flex items-start gap-3 rounded-lg p-3" style={{ background: "var(--app-bg)" }}>
-                <span className="pill mt-0.5" data-tone="good">
-                  On
-                </span>
-                <div>
+{!isAdmin && (
+          <section className="card">
+            <div className="card-header">
+              <Blocks size={15} className="muted" />
+              <h2 className="display text-xl text-white">Included</h2>
+            </div>
+            <div className="card-body grid sm:grid-cols-2 gap-3">
+              {businessModules(business).map(m => (
+                <div key={m} className="rounded-lg p-3" style={{ background: "var(--app-bg)" }}>
                   <p className="text-sm font-semibold text-white">{MODULE_INFO[m].label}</p>
                   <p className="text-xs faint">{MODULE_INFO[m].description}</p>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+              {((business.options ?? []) as ProductOption[]).map(o => (
+                <div key={o} className="rounded-lg p-3" style={{ background: "var(--app-bg)" }}>
+                  <p className="text-sm font-semibold text-white">{OPTION_INFO[o].label}</p>
+                  <p className="text-xs faint">{OPTION_INFO[o].description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </>
   )

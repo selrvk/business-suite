@@ -5,6 +5,7 @@ import { after } from "next/server"
 import { isPlatformEmail } from "@/lib/auth"
 import { canReceiveEmail, emailEnabled } from "@/lib/email"
 import { dbMessage } from "@/lib/db"
+import { cleanFeatures } from "@/lib/features"
 import { allowAttempt } from "@/lib/login"
 import { notifyNewSignup, sendLoginLink } from "@/lib/notify"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
@@ -27,6 +28,9 @@ export async function signUp(input: {
   email: string
   password: string
   website: string // honeypot: hidden from people, filled in by bots
+  businessType: string | null
+  modules: string[]
+  options: string[]
 }): Promise<ActionResult<{ confirm: boolean }>> {
   const name = input.businessName.trim()
   const email = input.email.trim().toLowerCase()
@@ -35,6 +39,8 @@ export async function signUp(input: {
   if (!EMAIL.test(email) || !canReceiveEmail(email)) return { ok: false, error: "Enter a valid email address." }
   if (input.password.length < 8) return { ok: false, error: "Password must be at least 8 characters." }
   if (isPlatformEmail(email)) return { ok: false, error: "This is the platform owner's email. Log in instead." }
+  const features = cleanFeatures({ businessType: input.businessType, modules: input.modules, options: input.options, customFields: [] })
+  if ("error" in features) return { ok: false, error: features.error }
   if (!(await allowAttempt("signup", email, 3, 5)))
     return { ok: false, error: "Too many sign-ups from here in the last hour. Try again later." }
 
@@ -48,7 +54,11 @@ export async function signUp(input: {
   const userId = data.user.id
 
   try {
-    await createBusinessFor(userId, email, name)
+    await createBusinessFor(userId, email, name, {
+      business_type: features.business_type,
+      modules: features.modules,
+      options: features.options,
+    })
   } catch (e) {
     await admin.auth.admin.deleteUser(userId)
     return { ok: false, error: dbMessage(e as { message: string; code?: string }) }

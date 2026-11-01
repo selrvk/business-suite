@@ -8,7 +8,7 @@ import { PointOfSale } from "./point-of-sale"
 export const metadata = { title: "Point of Sale" }
 
 export default async function PosPage() {
-  requireModule("sales")
+  await requireModule("sales")
   const supabase = await getSupabase()
   const [{ business }, { data: items, error }] = await Promise.all([
     requireUser(),

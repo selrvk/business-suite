@@ -393,6 +393,10 @@
       border-color 0.15s ease,
       box-shadow 0.15s ease;
   }
+  .input-sm {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+  }
   .input::placeholder {
     color: rgba(255, 255, 255, 0.24);
   }
@@ -727,12 +731,45 @@
   }
 }
 
+.print-only {
+  display: none;
+}
+
 @media print {
-  .no-print {
+  .no-print,
+  .print-hide {
     display: none !important;
+  }
+  .print-only {
+    display: inline !important;
   }
   body {
     background: #fff !important;
     color: #000 !important;
+  }
+  /* App pages (like the reorder list) print as black on white. */
+  .card,
+  .table-wrap,
+  .card-header {
+    background: #fff !important;
+    border-color: #bbb !important;
+    box-shadow: none !important;
+  }
+  .text-white,
+  .muted,
+  .faint,
+  .display,
+  .table th,
+  .table td {
+    color: #000 !important;
+  }
+  .pill {
+    color: #000 !important;
+    background: none !important;
+    border: 1px solid #999 !important;
+  }
+  .print-break {
+    break-inside: avoid;
+    margin-bottom: 1rem;
   }
 }

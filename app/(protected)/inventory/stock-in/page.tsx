@@ -9,11 +9,12 @@ import { StockIn } from "./stock-in"
 export const metadata = { title: "Stock In" }
 
 export default async function StockInPage() {
-  requireModule("inventory")
+  await requireModule("inventory")
   const supabase = await getSupabase()
-  const [, { data: items, error }] = await Promise.all([
+  const [, { data: items, error }, supplierRows] = await Promise.all([
     requireUser(),
     fetchAll<Item>((from, to) => supabase.from("items").select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell").order("id").range(from, to)),
+    supabase.from("suppliers").select("id, name").order("name"),
   ])
   if (error) return <DbError error={error} />
 
@@ -24,7 +25,7 @@ export default async function StockInPage() {
         title="Stock In"
         subtitle="Receiving a delivery? Scan each product (scan twice for 2), check the quantities, then save. Every change is logged."
       />
-      <StockIn items={items} />
+      <StockIn items={items} suppliers={supplierRows.data ?? []} />
     </>
   )
 }

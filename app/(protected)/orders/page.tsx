@@ -11,7 +11,7 @@ import { OrderActions } from "./order-actions"
 export const metadata = { title: "Pending Orders" }
 
 export default async function OrdersPage() {
-  requireModule("sales")
+  await requireModule("sales")
   const supabase = await getSupabase()
   const [, { data: orders, error }] = await Promise.all([
     requireUser(),

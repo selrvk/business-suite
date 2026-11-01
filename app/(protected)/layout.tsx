@@ -2,7 +2,9 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import Nav from "@/components/nav"
 import { access, getSession, isPlatformLogin, requireActive } from "@/lib/auth"
-import { formatDate } from "@/lib/format"
+import { BusinessFeaturesProvider } from "@/components/business-features"
+import { businessModules, customFields, type ProductOption } from "@/lib/features"
+import { formatDate, toYmd } from "@/lib/format"
 
 export async function generateMetadata(): Promise<Metadata> {
   const session = await getSession()
@@ -22,6 +24,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         username={session.username}
         isAdmin={session.isAdmin}
         isPlatformAdmin={platform}
+        modules={businessModules(session.business)}
+        options={session.business.options ?? []}
       />
       <div className="flex-1 min-w-0">
         {onTrial && session.isAdmin && (
@@ -37,7 +41,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </Link>
           </div>
         )}
-        <main className="px-4 py-6 sm:px-6 md:px-10 md:py-9">{children}</main>
+        <main className="px-4 py-6 sm:px-6 md:px-10 md:py-9">
+          <BusinessFeaturesProvider
+            value={{
+              options: (session.business.options ?? []) as ProductOption[],
+              customFields: customFields(session.business),
+              lowStock: session.business.low_stock_threshold,
+              today: toYmd(),
+            }}
+          >
+            {children}
+          </BusinessFeaturesProvider>
+        </main>
       </div>
     </div>
   )

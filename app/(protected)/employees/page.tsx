@@ -5,17 +5,19 @@ import { DbError } from "@/components/db-error"
 import { PageHeader } from "@/components/page-header"
 import { requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
-import { hasModule } from "@/lib/config"
+import { businessModules } from "@/lib/features"
 import type { Employee } from "@/lib/types"
 import { EmployeeList } from "./employee-list"
 
 export const metadata = { title: "Employees" }
 
 export default async function EmployeesPage() {
-  if (!hasModule("attendance") && !hasModule("fleet")) notFound()
+  const session = await requireUser()
+  const mods = businessModules(session.business)
+  if (!mods.includes("attendance") && !mods.includes("fleet")) notFound()
   const supabase = await getSupabase()
   const [{ isAdmin }, { data, error }] = await Promise.all([
-    requireUser(),
+    session,
     supabase.from("employees").select("id, name, code, position, phone, active").order("name"),
   ])
   if (error) return <DbError error={error} />
@@ -27,7 +29,7 @@ export default async function EmployeesPage() {
         eyebrow="People"
         title="Employees"
         subtitle={
-          hasModule("attendance")
+          mods.includes("attendance")
             ? "Everyone who clocks in or drives. Each person gets a badge code. Print it on an ID card and they scan it at the time clock."
             : "Your drivers and staff."
         }

@@ -3,7 +3,7 @@ import { Barcode } from "@/components/barcode"
 import { CloseButton, PrintButton } from "@/components/print-button"
 import { requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
-import { hasModule } from "@/lib/config"
+import { businessModules } from "@/lib/features"
 import { fetchAll } from "@/lib/db"
 import { money } from "@/lib/format"
 import type { Employee, Item, Vehicle } from "@/lib/types"
@@ -19,11 +19,12 @@ export default async function LabelsPage({
   params: Promise<{ kind: string }>
   searchParams: Promise<{ ids?: string; copies?: string }>
 }) {
-  const [{ kind }, query] = await Promise.all([params, searchParams])
+  const [{ kind }, query, session] = await Promise.all([params, searchParams, requireUser()])
+  const mods = businessModules(session.business)
   const allowed =
-    (kind === "employees" && (hasModule("attendance") || hasModule("fleet"))) ||
-    (kind === "vehicles" && hasModule("fleet")) ||
-    (kind === "products" && hasModule("inventory"))
+    (kind === "employees" && (mods.includes("attendance") || mods.includes("fleet"))) ||
+    (kind === "vehicles" && mods.includes("fleet")) ||
+    (kind === "products" && mods.includes("inventory"))
   if (!allowed) notFound()
 
   const supabase = await getSupabase()

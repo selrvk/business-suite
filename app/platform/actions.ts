@@ -5,6 +5,7 @@ import { after } from "next/server"
 import { isPlatformAdmin, isPlatformEmail } from "@/lib/auth"
 import { dayRange, isYmd } from "@/lib/format"
 import { notifyPaymentReviewed } from "@/lib/notify"
+import { getPaymentDetails, savePaymentDetails } from "@/lib/platform-settings"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 import type { ActionResult } from "@/lib/types"
 
@@ -127,5 +128,63 @@ export async function deleteBusiness(businessId: string, typedName: string): Pro
     if (data.user && !isPlatformEmail(data.user.email)) await admin.auth.admin.deleteUser(m.user_id)
   }
   refresh()
+  return { ok: true, data: null }
+}
+
+// ---------------------------------------------------------------------------
+// Payment details shown on every business's Billing page.
+// ---------------------------------------------------------------------------
+
+const QR_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }
+const QR_PREFIX = () => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/branding/platform/`
+
+export async function savePaymentInstructions(instructions: string): Promise<ActionResult> {
+  if (!(await isPlatformAdmin())) return NOT_ALLOWED
+  const text = instructions.trim()
+  if (text.length > 1000) return { ok: false, error: "Keep it under 1,000 characters." }
+  const current = await getPaymentDetails()
+  const { error } = await savePaymentDetails({ instructions: text, qrUrl: current.qrUrl })
+  if (error) return { ok: false, error: error.message }
+  revalidatePath("/platform")
+  revalidatePath("/billing")
+  return { ok: true, data: null }
+}
+
+/** Uploads a payment QR code (e.g. GCash's "Receive money" QR) to show on Billing. */
+export async function uploadPaymentQr(form: FormData): Promise<ActionResult<string>> {
+  if (!(await isPlatformAdmin())) return NOT_ALLOWED
+  const file = form.get("qr")
+  if (!(file instanceof Blob)) return { ok: false, error: "Pick an image." }
+  const ext = QR_TYPES[file.type]
+  if (!ext) return { ok: false, error: "Use a PNG, JPG or WebP image." }
+  if (file.size > 2 * 1024 * 1024) return { ok: false, error: "That image is too big. Try a smaller one." }
+
+  const bucket = createSupabaseAdminClient().storage.from("branding")
+  const path = `platform/payment-qr-${Date.now()}.${ext}`
+  const { error } = await bucket.upload(path, new Uint8Array(await file.arrayBuffer()), { contentType: file.type, cacheControl: "31536000" })
+  if (error) return { ok: false, error: error.message }
+  const url = bucket.getPublicUrl(path).data.publicUrl
+
+  const current = await getPaymentDetails()
+  const { error: saveError } = await savePaymentDetails({ instructions: current.instructions, qrUrl: url })
+  if (saveError) {
+    await bucket.remove([path])
+    return { ok: false, error: saveError.message }
+  }
+  if (current.qrUrl?.startsWith(QR_PREFIX())) await bucket.remove([`platform/${current.qrUrl.slice(QR_PREFIX().length)}`])
+  revalidatePath("/platform")
+  revalidatePath("/billing")
+  return { ok: true, data: url }
+}
+
+export async function removePaymentQr(): Promise<ActionResult> {
+  if (!(await isPlatformAdmin())) return NOT_ALLOWED
+  const current = await getPaymentDetails()
+  const { error } = await savePaymentDetails({ instructions: current.instructions, qrUrl: null })
+  if (error) return { ok: false, error: error.message }
+  if (current.qrUrl?.startsWith(QR_PREFIX()))
+    await createSupabaseAdminClient().storage.from("branding").remove([`platform/${current.qrUrl.slice(QR_PREFIX().length)}`])
+  revalidatePath("/platform")
+  revalidatePath("/billing")
   return { ok: true, data: null }
 }
