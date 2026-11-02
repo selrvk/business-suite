@@ -20,6 +20,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html
       lang="en"
       className="dark"
+      // The showcase page adds a class here before React loads (to hide blocks that animate in).
+      suppressHydrationWarning
       style={{ "--brand": config.accentColor } as React.CSSProperties}
     >
       <body>{children}</body>

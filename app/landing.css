@@ -1,21 +1,46 @@
-/* Showcase site ("scanner and receipt"). Scoped with lp- so the app is unaffected. */
+/* Showcase site: "one business day, open to close". Scoped with lp- so the app is unaffected. */
 
 .lp {
-  --laser: #ff2d3d;
-  --laser-soft: color-mix(in srgb, #ff2d3d 18%, transparent);
   --paper: #f7f5ef;
   --ink: #222222;
   --ink-soft: #5c5a55;
+  /* the day: morning light, the brand at midday, evening */
+  --dawn: #f5b942;
+  --dusk: #8b7bff;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  isolation: isolate;
   overflow-x: clip;
 }
 
-/* ---- header: the scanner window, with a laser line along its bottom ---- */
+/* ---- backdrop: morning light at the top, evening as you scroll down ---- */
+.lp-sky {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.lp-sky-morning {
+  background:
+    radial-gradient(900px 520px at 12% -8%, color-mix(in srgb, var(--dawn) 15%, transparent), transparent 70%),
+    radial-gradient(700px 420px at 90% 10%, color-mix(in srgb, var(--brand) 9%, transparent), transparent 70%);
+  opacity: calc(1 - var(--day, 0));
+}
+.lp-sky-evening {
+  background:
+    radial-gradient(1000px 600px at 88% 108%, color-mix(in srgb, var(--dusk) 16%, transparent), transparent 70%),
+    radial-gradient(700px 420px at 5% 95%, color-mix(in srgb, var(--brand) 8%, transparent), transparent 70%);
+  opacity: var(--day, 0);
+}
+
+/* ---- header ---- */
 .lp-header {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: color-mix(in srgb, var(--app-bg) 86%, transparent);
-  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--app-bg) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--app-border);
 }
 .lp-header::after {
@@ -25,71 +50,74 @@
   right: 0;
   bottom: -1px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--laser) 20%, var(--laser) 80%, transparent);
-  opacity: 0.55;
+  background: linear-gradient(90deg, transparent, var(--dawn) 15%, var(--brand) 50%, var(--dusk) 85%, transparent);
+  opacity: 0.45;
 }
 
-/* ---- scroll indicator: a scan line filling across the top ---- */
-.lp-progress {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  z-index: 60;
-  background: var(--laser);
-  box-shadow: 0 0 10px var(--laser);
-  transform-origin: 0 50%;
-  transform: scaleX(0);
-  pointer-events: none;
+/* ---- buttons: the arrow nudges forward on hover ---- */
+.lp-cta {
+  box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--brand) 80%, transparent);
 }
-@supports (animation-timeline: scroll()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .lp-progress {
-      animation: lp-fill linear both;
-      animation-timeline: scroll(root);
-    }
-  }
+.lp-cta svg {
+  transition: transform 0.25s var(--ease);
 }
-@keyframes lp-fill {
-  to {
-    transform: scaleX(1);
-  }
+.lp-cta:hover svg {
+  transform: translateX(3px);
 }
 
-/* ---- buttons: a laser sweep on hover ---- */
-.lp-scan-btn {
-  position: relative;
-  overflow: hidden;
+/* ---- chips and small labels ---- */
+.lp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 0.38rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dawn) 40%, transparent);
+  background: color-mix(in srgb, var(--dawn) 12%, transparent);
 }
-.lp-scan-btn::after {
+.lp-chip::before {
   content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -30%;
-  width: 2px;
-  background: var(--laser);
-  box-shadow: 0 0 10px 2px var(--laser);
-  opacity: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dawn);
+  box-shadow: 0 0 8px var(--dawn);
 }
-@media (prefers-reduced-motion: no-preference) {
-  .lp-scan-btn:hover::after {
-    animation: lp-sweep 0.6s ease-out;
-  }
+.lp-time {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--dawn);
 }
-@keyframes lp-sweep {
-  0% {
-    left: -2%;
-    opacity: 1;
-  }
-  100% {
-    left: 102%;
-    opacity: 0.6;
-  }
+.lp-type {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--app-border-strong);
+  background: var(--app-surface);
+  font-size: 0.85rem;
 }
 
-/* ---- hero scanner window ---- */
+/* ---- cards lift a little on hover ---- */
+.lp-card {
+  transition:
+    transform 0.35s var(--ease),
+    border-color 0.35s var(--ease),
+    background 0.35s var(--ease);
+}
+.lp-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--app-border-strong);
+}
+
+/* ---- app windows ---- */
 .lp-window {
   position: relative;
   background: var(--app-surface);
@@ -97,72 +125,169 @@
   border-radius: 16px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
 }
-.lp-scanzone {
-  position: relative;
-  background: var(--paper);
-  border-radius: 10px;
-  padding: 18px 22px 12px;
+.lp-board {
   overflow: hidden;
 }
-.lp-scanline {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 50%;
-  width: 2px;
-  background: var(--laser);
-  box-shadow: 0 0 12px 3px var(--laser-soft), 0 0 4px var(--laser);
+.lp-email {
+  background: #ffffff;
+  border-color: #e6e3da;
 }
-@media (prefers-reduced-motion: no-preference) {
-  .lp-scanline {
-    animation: lp-scan 2.4s ease-in-out infinite alternate;
-  }
-}
-@keyframes lp-scan {
-  from {
-    left: 6%;
-  }
-  to {
-    left: 94%;
-  }
-}
-
-/* ---- dividers ---- */
-.lp-barcode-divider {
-  display: block;
-  width: 100%;
-  height: 28px;
-  color: var(--app-border-strong);
-}
-.lp-perf {
-  border: 0;
-  border-top: 2px dotted currentColor;
-  opacity: 0.35;
-  margin: 0;
-}
-
-/* ---- "what you scan" chip ---- */
-.lp-chip {
+.lp-live {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
   font-size: 0.7rem;
   font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--app-success);
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-success) 12%, transparent);
+}
+.lp-live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--app-success);
+}
+.lp-dot-sm {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--app-faint);
+}
+.lp-dot-sm[data-tone="good"] {
+  background: var(--app-success);
+}
+.lp-dot-sm[data-tone="warn"] {
+  background: var(--app-warning);
+}
+.lp-dot-sm[data-tone="brand"] {
+  background: var(--brand);
+}
+.lp-dot-sm[data-tone="info"] {
+  background: var(--dusk);
+}
+
+/* the live feed: a fixed-height window; new activity slides in at the top */
+.lp-feed {
+  height: 13.75rem;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 78%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent);
+}
+.lp-feed-item {
+  margin-bottom: 0.5rem;
+}
+
+/* bar charts */
+.lp-bars span {
+  flex: 1;
+  border-radius: 4px 4px 0 0;
+  background: color-mix(in srgb, var(--brand) 75%, transparent);
+  transform-origin: bottom;
+}
+.lp-bars span:last-child {
+  background: var(--dawn);
+}
+.lp-bars-split span,
+.lp-bars-split span:last-child {
+  background: linear-gradient(to top, #d95926 0 68%, var(--app-surface) 68% calc(68% + 2px), #3987e5 calc(68% + 2px));
+}
+
+/* ---- the day: a line that fills as you scroll, a node for each part of the day ---- */
+.lp-timeline {
+  position: relative;
+  padding-left: 30px;
+}
+.lp-timeline::before,
+.lp-timeline::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+}
+.lp-timeline::before {
+  background: var(--app-border-strong);
+}
+.lp-timeline::after {
+  background: linear-gradient(to bottom, var(--dawn), var(--brand) 55%, var(--dusk));
+  clip-path: inset(0 0 calc((1 - var(--day, 0)) * 100%) 0);
+}
+.lp-chapter {
+  padding-bottom: 6rem;
+}
+.lp-chapter:last-child {
+  padding-bottom: 2rem;
+}
+.lp-stamp {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  color: var(--app-muted);
+}
+.lp-stamp time {
+  color: #fff;
+  font-weight: 700;
+}
+.lp-node {
+  position: absolute;
+  left: -30px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: var(--app-bg);
+  border: 2px solid var(--app-border-strong);
+  transition:
+    background 0.4s var(--ease),
+    border-color 0.4s var(--ease),
+    box-shadow 0.4s var(--ease);
+}
+.lp-chapter[data-reached] .lp-node {
+  background: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 60%, #fff);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+.lp-clock {
+  position: sticky;
+  top: 6.5rem;
+  text-align: right;
+}
+.lp-clock [data-clock] {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+.lp-clock [data-clock-label] {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #fff;
-  padding: 0.35rem 0.75rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--laser) 45%, transparent);
-  background: var(--laser-soft);
+  color: var(--dawn);
 }
-.lp-chip::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--laser);
-  box-shadow: 0 0 6px var(--laser);
+
+/* ---- dividers ---- */
+.lp-perf {
+  border: 0;
+  border-top: 2px dotted currentColor;
+  opacity: 0.35;
+  margin: 0;
 }
 
 /* ---- thermal receipt (pricing, footer) ---- */
@@ -204,11 +329,26 @@
 .lp-faq summary::after {
   content: "+";
   float: right;
-  color: var(--laser);
+  color: var(--dawn);
   font-weight: 700;
+  transition: transform 0.3s var(--ease);
 }
 .lp-faq[open] summary::after {
   content: "–";
+}
+
+/* ---- the "closed" sign on the 404 page ---- */
+.lp-sign {
+  display: inline-block;
+  padding: 0.55rem 1.4rem;
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  color: var(--ink);
+  transform: rotate(-3deg);
 }
 
 /* ---- placeholders the owner must fill in before launch ---- */
@@ -221,6 +361,87 @@
   border: 2px dashed #b38b00;
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
+}
+
+/* ---- motion: blocks rise into place as they scroll into view ----
+   .lp-anim is set on <html> by a tiny script before paint (never when the
+   device asks for reduced motion); [data-shown] is set as each block appears. */
+@media (prefers-reduced-motion: no-preference) {
+  .lp-anim .lp-reveal {
+    transition:
+      opacity 0.9s var(--ease),
+      transform 0.9s var(--ease);
+  }
+  .lp-anim .lp-reveal-late {
+    transition-delay: 0.15s;
+  }
+  .lp-anim .lp-reveal:not([data-shown]) {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  .lp-anim .lp-reveal .lp-stagger {
+    transition:
+      opacity 0.7s var(--ease),
+      transform 0.7s var(--ease);
+    transition-delay: calc(var(--i, 0) * 70ms + 120ms);
+  }
+  .lp-anim .lp-reveal:not([data-shown]) .lp-stagger {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  .lp-anim .lp-reveal .lp-bars span {
+    transition: transform 0.9s var(--ease);
+    transition-delay: calc(var(--i, 0) * 45ms + 250ms);
+  }
+  .lp-anim .lp-reveal:not([data-shown]) .lp-bars span {
+    transform: scaleY(0.04);
+  }
+  .lp-feed-item {
+    animation: lp-arrive 0.6s var(--ease) both;
+  }
+  .lp-live::before {
+    animation: lp-pulse 2s ease-in-out infinite;
+  }
+}
+@keyframes lp-arrive {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    max-height: 3rem;
+    transform: none;
+  }
+}
+@keyframes lp-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-success) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-card,
+  .lp-card:hover {
+    transition: none;
+    transform: none;
+  }
+  .lp-sky-morning {
+    opacity: 0.7;
+  }
+  .lp-sky-evening {
+    opacity: 0.5;
+  }
+  .lp-timeline::after {
+    clip-path: none;
+  }
 }
 
 /* ---- the fine print: Terms and Privacy on receipt paper ---- */

@@ -2,7 +2,6 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { AppLogoMark } from "@/components/app-logo"
 import { config } from "@/lib/config"
-import { PaperBarcode } from "../landing-parts"
 import "../landing.css"
 
 /** The fine print: Terms of Service and Privacy Policy, printed on the receipt paper of the showcase site. */
@@ -35,7 +34,10 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
             {config.contactEmail}
           </a>
         </nav>
-        <PaperBarcode seed={config.appName} height={30} />
+        <hr className="lp-perf" />
+        <p className="text-xs" style={{ color: "var(--ink-soft)" }}>
+          © {new Date().getFullYear()} {config.appName} · by {config.provider}
+        </p>
       </footer>
     </div>
   )

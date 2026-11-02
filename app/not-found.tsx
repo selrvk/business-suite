@@ -1,24 +1,22 @@
 import Link from "next/link"
 import { AppLogoMark } from "@/components/app-logo"
-import { PaperBarcode } from "./landing-parts"
 import "./landing.css"
 
 export const metadata = { title: "Not found" }
 
-/** The app's own "unknown barcode" message, for pages that don't exist. */
+/** A shop sign, flipped to closed, for pages that don't exist. */
 export default function NotFound() {
   return (
     <main className="lp min-h-screen flex items-center justify-center p-6">
       <div className="lp-receipt w-full max-w-sm px-7 pt-9 pb-11 text-center font-mono">
-        <div className="flex justify-center mb-5">
+        <div className="flex justify-center mb-6">
           <AppLogoMark size={44} />
         </div>
-        <PaperBarcode seed="404" height={56} />
-        <p className="tracking-[0.3em] text-xs mt-2">0 000000 000404</p>
-        <hr className="lp-perf my-5" />
-        <p className="text-lg font-bold">No product has barcode 404.</p>
+        <span className="lp-sign">CLOSED</span>
+        <hr className="lp-perf my-6" />
+        <p className="text-lg font-bold">Sorry, this page isn&apos;t open.</p>
         <p className="text-sm mt-2" style={{ color: "var(--ink-soft)" }}>
-          This page doesn&apos;t exist, or it moved.
+          It doesn&apos;t exist, or it moved.
         </p>
         <div className="mt-6 flex justify-center gap-2">
           <Link href="/" className="btn btn-primary">
