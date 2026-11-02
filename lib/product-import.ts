@@ -22,6 +22,7 @@ type BaseField =
   | "category"
   | "location"
   | "reorder_level"
+  | "senior_discount"
   | "expires_on"
   | "lot"
 /** A product field a column can fill. Custom fields are "extra:<field id>". */
@@ -39,6 +40,7 @@ const BASE_FIELDS: { key: BaseField; label: string; option?: ProductOption }[] =
   { key: "category", label: "Category", option: "categories" },
   { key: "location", label: "Shelf / location", option: "locations" },
   { key: "reorder_level", label: "Low-stock level" },
+  { key: "senior_discount", label: "Senior/PWD discount (20, 5 or 0)" },
   { key: "expires_on", label: "Expiry date", option: "expiry" },
   { key: "lot", label: "Lot / batch no.", option: "expiry" },
 ]
@@ -64,6 +66,7 @@ const COLUMN_NAMES: Record<BaseField, string[]> = {
   category: ["category", "categories", "group", "department", "kategorya"],
   location: ["location", "shelf", "shelflocation", "bin", "aisle", "rack", "storage", "storagelocation", "warehouse", "lugar"],
   reorder_level: ["lowstocklevel", "reorderlevel", "reorderpoint", "minstock", "minimumstock", "minimum", "safetystock"],
+  senior_discount: ["seniordiscount", "seniorpwd", "seniorpwddiscount", "scdiscount", "scpwd", "scpwddiscount", "seniorcitizendiscount", "pwddiscount", "scrate"],
   expires_on: ["expiry", "expirydate", "expiration", "expirationdate", "exp", "expdate", "bestbefore", "useby", "nearestexpiry"],
   lot: ["lot", "lotno", "lotnumber", "batch", "batchno", "batchnumber"],
 }
@@ -166,6 +169,8 @@ export type ImportRow = {
   category: string | null
   location: string | null
   reorder_level: number | null
+  /** Senior/PWD discount: 20, 5 or 0; null = leave as is. */
+  senior_discount: number | null
   /** Custom field values by field id; only filled-in cells. */
   extra: Record<string, string | number>
   expires_on: string | null
@@ -187,6 +192,7 @@ export function rowProblem(row: ImportRow): string | null {
     return "Stock must be a whole number, zero or more"
   if (row.reorder_level !== null && (!Number.isInteger(row.reorder_level) || row.reorder_level < 0 || row.reorder_level > 1e9))
     return "Low-stock level must be a whole number, zero or more"
+  if (row.senior_discount !== null && ![0, 5, 20].includes(row.senior_discount)) return "Senior/PWD discount must be 20, 5 or 0"
   if (row.price_buy !== null && (row.price_buy < 0 || row.price_buy > 1e9)) return "Cost must be zero or more"
   if (row.price_sell !== null && (row.price_sell < 0 || row.price_sell > 1e9)) return "Price must be zero or more"
   if (row.expires_on !== null && !/^\d{4}-\d{2}-\d{2}$/.test(row.expires_on)) return "Expiry isn't a date"
@@ -228,6 +234,10 @@ export function readRows(
       }
       return value
     }
+    // "20%", "5", "none" and the like.
+    const seniorCell = text(cell(r, "senior_discount")).toLowerCase().replace(/[%\s]/g, "")
+    const senior = !seniorCell ? null : ["none", "no", "n/a", "na", "-", "wala"].includes(seniorCell) ? 0 : Number(seniorCell)
+    if (senior !== null && !Number.isFinite(senior)) problems.push("Senior/PWD discount must be 20, 5 or 0")
     const buy = number("price_buy", "Cost")
     const sell = number("price_sell", "Price")
     const extra: Record<string, string | number> = {}
@@ -250,6 +260,7 @@ export function readRows(
       category: text(cell(r, "category")) || null,
       location: text(cell(r, "location")) || null,
       reorder_level: number("reorder_level", "Low-stock level"),
+      senior_discount: senior !== null && Number.isFinite(senior) ? senior : null,
       extra,
       expires_on: date("expires_on", "Expiry"),
       lot: text(cell(r, "lot")) || null,
@@ -342,6 +353,8 @@ export function planRows(
     changed("shelf", item.location, row.location)
     if (row.reorder_level !== null && row.reorder_level !== item.reorder_level)
       changes.push(`low-stock level ${item.reorder_level ?? "default"} → ${row.reorder_level}`)
+    if (row.senior_discount !== null && row.senior_discount !== (item.senior_discount ?? null))
+      changes.push(`Senior/PWD ${item.senior_discount == null ? "default" : `${item.senior_discount}%`} → ${row.senior_discount}%`)
     for (const f of context.customFields) {
       const to = row.extra[f.id]
       const from = item.extra?.[f.id]
@@ -368,7 +381,13 @@ export function cleanImportRow(value: unknown): ImportRow | null {
     expires_on: str(o.expires_on),
     lot: str(o.lot),
   }
-  const numbers = { stock: numb(o.stock), price_buy: numb(o.price_buy), price_sell: numb(o.price_sell), reorder_level: numb(o.reorder_level) }
+  const numbers = {
+    stock: numb(o.stock),
+    price_buy: numb(o.price_buy),
+    price_sell: numb(o.price_sell),
+    reorder_level: numb(o.reorder_level),
+    senior_discount: numb(o.senior_discount),
+  }
   if (typeof o.line !== "number" || typeof fields.name !== "string") return null
   if ([...Object.values(fields), ...Object.values(numbers)].some(v => v === undefined)) return null
 
@@ -395,6 +414,7 @@ export function cleanImportRow(value: unknown): ImportRow | null {
     category: fields.category || null,
     location: fields.location || null,
     reorder_level: numbers.reorder_level ?? null,
+    senior_discount: numbers.senior_discount ?? null,
     extra,
     expires_on: fields.expires_on || null,
     lot: fields.lot || null,

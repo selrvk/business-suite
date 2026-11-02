@@ -63,6 +63,43 @@ export async function updateBusiness(input: BusinessInput): Promise<ActionResult
   return { ok: true, data: null }
 }
 
+const RATES = [0, 5, 20]
+
+/** The Senior/PWD discount for products that don't set their own, and the BMBE/cooperative exemption from the 5%. */
+export async function updateSeniorSettings(input: { senior_default: number; senior_basic_exempt: boolean }): Promise<ActionResult> {
+  const g = await guard({ admin: true, allowExpired: true })
+  if (!g.ok) return g
+  if (!RATES.includes(input.senior_default)) return { ok: false, error: "Pick a default discount." }
+  const { supabase, business } = g.session
+  const { error } = await supabase
+    .from("businesses")
+    .update({ senior_default: input.senior_default, senior_basic_exempt: input.senior_basic_exempt === true })
+    .eq("id", business.id)
+  if (error) return { ok: false, error: dbMessage(error) }
+  await logActivity(g.session, "business_changed", business.name, {
+    senior_default: input.senior_default,
+    senior_basic_exempt: input.senior_basic_exempt === true,
+  })
+  refresh()
+  return { ok: true, data: null }
+}
+
+/** Sets the Senior/PWD discount of every product in a category (null category = products without one; null rate = the default). */
+export async function setCategorySenior(category: string | null, rate: number | null): Promise<ActionResult<number>> {
+  const g = await guard({ admin: true })
+  if (!g.ok) return g
+  if (rate !== null && !RATES.includes(rate)) return { ok: false, error: "Pick a discount." }
+  const query = g.session.supabase.from("items").update({ senior_discount: rate })
+  const { data, error } = await (category ? query.eq("category", category) : query.is("category", null)).select("id")
+  if (error) return { ok: false, error: dbMessage(error) }
+  await logActivity(g.session, "product_changed", category ? `Category ${category}` : "Products without a category", {
+    senior_discount: rate ?? "default",
+    products: data?.length ?? 0,
+  })
+  refresh()
+  return { ok: true, data: data?.length ?? 0 }
+}
+
 const logoPrefix = (businessId: string) => `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/branding/${businessId}/`
 
 const LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }

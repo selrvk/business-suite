@@ -21,6 +21,10 @@ export type Business = {
   vat_registered: boolean
   /** How often owners get the summary email. */
   digest?: "off" | "daily" | "weekly"
+  /** Senior/PWD discount for products that don't set their own: 20, 5 or 0. */
+  senior_default?: number
+  /** BMBE-registered or a cooperative: doesn't give the 5% on basic goods. */
+  senior_basic_exempt?: boolean
 }
 
 export type Role = "owner" | "admin" | "staff"
@@ -39,6 +43,8 @@ export type Item = {
   location?: string | null
   /** This product's low-stock level; null = the business's. */
   reorder_level?: number | null
+  /** Senior Citizen/PWD discount: 20, 5 or 0; null = the business's default. */
+  senior_discount?: number | null
   /** Custom field values, by field id. */
   extra?: Record<string, string | number | null>
 }
@@ -110,6 +116,8 @@ export type OrderLine = {
   price_at_time: number
   /** Pesos off this whole line. */
   discount?: number
+  /** The Senior/PWD rate this line got (20 or 5), when its discount is that. */
+  senior_rate?: number | null
   items: { name: string; unit: string } | null
 }
 

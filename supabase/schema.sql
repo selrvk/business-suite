@@ -49,6 +49,13 @@ alter table public.businesses add column if not exists vat_registered boolean no
 -- Email summary for the owners: 'weekly' (Mondays), 'daily', or 'off'.
 alter table public.businesses add column if not exists digest text not null default 'weekly'
   check (digest in ('off', 'daily', 'weekly'));
+-- Senior Citizen/PWD discount for products that don't set their own: 20 (medicine,
+-- meals: 20% off and VAT-exempt), 5 (basic necessities and prime commodities:
+-- 5% off, VAT stays, at most PHP125 a week), or 0 (none required).
+alter table public.businesses add column if not exists senior_default smallint not null default 5
+  check (senior_default in (0, 5, 20));
+-- BMBE-registered businesses and cooperatives don't have to give the 5% on basic goods.
+alter table public.businesses add column if not exists senior_basic_exempt boolean not null default false;
 
 -- Who can log in to which business. One business per login.
 create table if not exists public.members (
@@ -331,6 +338,7 @@ alter table public.items add column if not exists category text;
 alter table public.items add column if not exists location text; -- shelf or storage spot
 alter table public.items add column if not exists reorder_level integer check (reorder_level >= 0); -- null: the business's low-stock level
 alter table public.items add column if not exists extra jsonb not null default '{}'; -- custom field values, by field id
+alter table public.items add column if not exists senior_discount smallint check (senior_discount in (0, 5, 20)); -- null: the business's default
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'items_supplier_fkey') then
@@ -497,6 +505,8 @@ end $$;
 alter table public.order_item add column if not exists discount numeric(12, 2) not null default 0;
 -- What each item cost when it was sold, for profit reports. Older sales have none (reports estimate them).
 alter table public.order_item add column if not exists cost_at_time numeric(12, 2);
+-- The Senior/PWD rate a sold line got (20 or 5); its discount is in "discount". Null: none, or a promo instead.
+alter table public.order_item add column if not exists senior_rate smallint check (senior_rate in (5, 20));
 create index if not exists order_item_item_idx on public.order_item (item_id);
 
 -- End-of-day closings: the day's numbers, and the cash counted in the drawer.
@@ -623,6 +633,25 @@ $$;
 --     customer's balance (needs the "credit" permission; respects their limit).
 -- Returns { id, number, total, on_credit }.
 drop function if exists public.create_sale(jsonb, text, boolean, text, numeric); -- older versions had fewer options
+-- How much 5% Senior/PWD discount (basic goods) this ID got at this business
+-- this week, Monday to Sunday, Philippine time. The law caps it at PHP125 a week.
+create or replace function public.senior_week_used(p_kind text, p_id_no text)
+returns numeric
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(sum(oi.discount), 0)
+  from orders o
+  join order_item oi on oi.order_id = o.id
+  where o.business_id = current_business_id()
+    and o.discount_kind = p_kind
+    and o.status <> 'CANCELLED'
+    and oi.senior_rate = 5
+    and upper(regexp_replace(o.discount_id_no, '[^A-Za-z0-9]', '', 'g')) = upper(regexp_replace(coalesce(p_id_no, ''), '[^A-Za-z0-9]', '', 'g'))
+    and o.date_created >= (date_trunc('week', now() at time zone 'Asia/Manila') at time zone 'Asia/Manila');
+$$;
+
 create or replace function public.create_sale(
   p_items jsonb,
   p_customer_name text default null,
@@ -661,6 +690,17 @@ declare
   v_name text;
   v_line numeric(12, 2);
   v_disc numeric(12, 2);
+  v_senior boolean := coalesce(v_kind in ('senior', 'pwd'), false);
+  v_default smallint;
+  v_exempt boolean;
+  v_item_rate smallint;
+  v_rate smallint;
+  v_line_rate smallint;
+  v_room numeric(12, 2) := 0;
+  v_sc numeric(12, 2);
+  v_vx numeric(12, 2);
+  v_promos numeric(12, 2) := 0;
+  v_senior_total numeric(12, 2) := 0;
   e jsonb;
 begin
   if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
@@ -672,6 +712,14 @@ begin
   if v_kind is not null and v_kind not in ('senior', 'pwd', 'amount', 'percent') then
     raise exception 'Unknown discount';
   end if;
+  if v_senior then
+    if v_person is null or v_id_no is null then
+      raise exception 'Enter the % name and ID number', case v_kind when 'senior' then 'Senior Citizen''s' else 'PWD''s' end;
+    end if;
+    select vat_registered, senior_default, senior_basic_exempt into v_vat, v_default, v_exempt
+    from businesses where id = current_business_id();
+    v_room := greatest(0, 125 - senior_week_used(v_kind, v_id_no));
+  end if;
 
   insert into orders (customer_name, status, total_price) values (nullif(trim(p_customer_name), ''), 'PENDING', 0)
   returning id, number into v_order_id, v_number;
@@ -680,35 +728,54 @@ begin
     if (e ->> 'quantity')::integer is null or (e ->> 'quantity')::integer <= 0 then
       raise exception 'Quantities must be at least 1';
     end if;
-    select price_sell, price_buy, name into v_price, v_cost, v_name from items where id = (e ->> 'item_id')::bigint;
+    select price_sell, price_buy, name, senior_discount into v_price, v_cost, v_name, v_item_rate
+    from items where id = (e ->> 'item_id')::bigint;
     if not found then
       raise exception 'A product in this sale no longer exists';
     end if;
     v_line := v_price * (e ->> 'quantity')::integer;
+    -- A promo on this line, if the cashier gave one.
     v_disc := case e ->> 'discount_type'
       when 'amount' then least(greatest(coalesce((e ->> 'discount_value')::numeric, 0), 0), v_line)
       when 'percent' then round(v_line * least(greatest(coalesce((e ->> 'discount_value')::numeric, 0), 0), 100) / 100, 2)
       else 0
     end;
-    insert into order_item (order_id, item_id, item_name, quantity, price_at_time, discount, cost_at_time)
-    values (v_order_id, (e ->> 'item_id')::bigint, v_name, (e ->> 'quantity')::integer, v_price, v_disc, v_cost);
+    v_line_rate := null;
+    -- Senior/PWD: each line gets its own rate, or its promo if that's bigger (never both).
+    if v_senior then
+      v_rate := coalesce(v_item_rate, v_default, 5);
+      if v_rate = 5 and v_exempt then
+        v_rate := 0;
+      end if;
+      if v_rate = 20 then
+        v_vx := case when v_vat then v_line - round(v_line / 1.12, 2) else 0 end;
+        v_sc := round((v_line - v_vx) * 0.20, 2);
+        if v_disc <= v_sc + v_vx then
+          v_disc := v_sc;
+          v_vat_exempt := v_vat_exempt + v_vx;
+          v_line_rate := 20;
+        end if;
+      elsif v_rate = 5 then
+        v_sc := least(round(v_line * 0.05, 2), v_room);
+        if v_sc > 0 and v_disc < v_sc then
+          v_disc := v_sc;
+          v_room := v_room - v_sc;
+          v_line_rate := 5;
+        end if;
+      end if;
+    end if;
+    if v_line_rate is null then
+      v_promos := v_promos + v_disc;
+    else
+      v_senior_total := v_senior_total + v_disc;
+    end if;
+    insert into order_item (order_id, item_id, item_name, quantity, price_at_time, discount, cost_at_time, senior_rate)
+    values (v_order_id, (e ->> 'item_id')::bigint, v_name, (e ->> 'quantity')::integer, v_price, v_disc, v_cost, v_line_rate);
     v_subtotal := v_subtotal + v_line;
     v_line_discounts := v_line_discounts + v_disc;
   end loop;
 
-  if v_kind in ('senior', 'pwd') then
-    if v_person is null or v_id_no is null then
-      raise exception 'Enter the % name and ID number', case v_kind when 'senior' then 'Senior Citizen''s' else 'PWD''s' end;
-    end if;
-    -- No other discounts on top of the Senior/PWD discount.
-    update order_item set discount = 0 where order_id = v_order_id;
-    v_line_discounts := 0;
-    select vat_registered into v_vat from businesses where id = current_business_id();
-    if v_vat then
-      v_vat_exempt := v_subtotal - round(v_subtotal / 1.12, 2);
-    end if;
-    v_order_discount := round((v_subtotal - v_vat_exempt) * 0.20, 2);
-  elsif v_kind in ('amount', 'percent') then
+  if v_kind in ('amount', 'percent') then
     if v_value is null or v_value < 0 or (v_kind = 'percent' and v_value > 100) then
       raise exception 'Enter a discount between 0 and %', case v_kind when 'percent' then '100%' else 'the total' end;
     end if;
@@ -717,7 +784,7 @@ begin
       else round((v_subtotal - v_line_discounts) * v_value / 100, 2)
     end;
   end if;
-  if (v_line_discounts > 0 or (v_kind in ('amount', 'percent') and v_order_discount > 0)) and not has_permission('discounts') then
+  if (v_promos > 0 or (v_kind in ('amount', 'percent') and v_order_discount > 0)) and not has_permission('discounts') then
     raise exception 'You don''t have permission to give discounts';
   end if;
   v_total := v_subtotal - v_vat_exempt - v_line_discounts - v_order_discount;
@@ -747,10 +814,11 @@ begin
   set subtotal = v_subtotal,
       discount_total = v_line_discounts + v_order_discount,
       vat_exempt = v_vat_exempt,
-      discount_kind = case when v_order_discount > 0 or v_vat_exempt > 0 then v_kind end,
+      discount_kind = case when v_senior then case when v_senior_total > 0 or v_vat_exempt > 0 then v_kind end
+                           when v_order_discount > 0 then v_kind end,
       discount_value = case when v_kind in ('amount', 'percent') then v_value end,
-      discount_person = case when v_kind in ('senior', 'pwd') then v_person end,
-      discount_id_no = case when v_kind in ('senior', 'pwd') then v_id_no end,
+      discount_person = case when v_senior and (v_senior_total > 0 or v_vat_exempt > 0) then v_person end,
+      discount_id_no = case when v_senior and (v_senior_total > 0 or v_vat_exempt > 0) then v_id_no end,
       total_price = v_total,
       customer_id = p_customer_id,
       customer_name = coalesce(nullif(trim(p_customer_name), ''), v_customer_name),
@@ -1271,6 +1339,7 @@ declare
   v_category text;
   v_location text;
   v_reorder integer;
+  v_senior smallint;
   v_extra jsonb;
   v_expires date;
   v_lot text;
@@ -1298,6 +1367,10 @@ begin
     v_category := nullif(trim(r ->> 'category'), '');
     v_location := nullif(trim(r ->> 'location'), '');
     v_reorder := (r ->> 'reorder_level')::integer;
+    v_senior := (r ->> 'senior_discount')::smallint;
+    if v_senior is not null and v_senior not in (0, 5, 20) then
+      raise exception '"%": the Senior/PWD discount must be 20, 5 or 0', r ->> 'name';
+    end if;
     v_extra := case when jsonb_typeof(r -> 'extra') = 'object' then r -> 'extra' else '{}'::jsonb end;
     v_expires := nullif(r ->> 'expires_on', '')::date;
     v_lot := nullif(trim(r ->> 'lot'), '');
@@ -1334,9 +1407,9 @@ begin
 
     if v_id is null then
       insert into items (barcode, name, brand, unit, price_buy, price_sell, current_stock,
-                         supplier_id, category, location, reorder_level, extra)
+                         supplier_id, category, location, reorder_level, senior_discount, extra)
       values (v_barcode, v_name, v_brand, coalesce(v_unit, 'pieces'), coalesce(v_buy, 0), coalesce(v_sell, 0), 0,
-              v_supplier, v_category, v_location, v_reorder, v_extra)
+              v_supplier, v_category, v_location, v_reorder, v_senior, v_extra)
       returning id into v_id;
       if coalesce(v_stock, 0) > 0 then
         perform adjust_stock(v_id, v_stock, 'initial', 'Imported');
@@ -1359,6 +1432,7 @@ begin
           category = coalesce(v_category, category),
           location = coalesce(v_location, location),
           reorder_level = coalesce(v_reorder, reorder_level),
+          senior_discount = coalesce(v_senior, senior_discount),
           extra = extra || v_extra
       where id = v_id
         and (barcode is distinct from coalesce(v_barcode, barcode)
@@ -1371,6 +1445,7 @@ begin
           or category is distinct from coalesce(v_category, category)
           or location is distinct from coalesce(v_location, location)
           or reorder_level is distinct from coalesce(v_reorder, reorder_level)
+          or senior_discount is distinct from coalesce(v_senior, senior_discount)
           or extra is distinct from extra || v_extra);
       v_changed := found;
       if p_set_stock and v_stock is not null and v_stock <> v_old then
@@ -1765,7 +1840,8 @@ grant usage, select on all sequences in schema public to authenticated;
 -- Businesses can edit their own details, but never their trial or payment dates.
 revoke insert, update, delete on public.businesses from authenticated;
 grant update (name, slug, address, contact, logo_url, receipt_footer, low_stock_threshold,
-  business_type, modules, options, custom_fields, receipt_note, vat_registered, digest) on public.businesses to authenticated;
+  business_type, modules, options, custom_fields, receipt_note, vat_registered, digest,
+  senior_default, senior_basic_exempt) on public.businesses to authenticated;
 revoke insert, update, delete on public.members from authenticated;
 revoke update, delete on public.payment_requests from authenticated;
 

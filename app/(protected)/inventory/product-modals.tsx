@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Wand2, X } from "lucide-react"
 import { useBusinessFeatures, useCan } from "@/components/business-features"
+import { SENIOR_RATE_LABELS, type SeniorRate } from "@/lib/sale-math"
 import { Modal } from "@/components/modal"
 import { codeFieldProps } from "@/components/scan-input"
 import { generateProductBarcode } from "@/components/barcode"
@@ -52,7 +53,7 @@ function ProductForm({
   onClose: () => void
   onSaved?: (id: number) => void
 }) {
-  const { options, customFields, lowStock } = useBusinessFeatures()
+  const { options, customFields, lowStock, seniorDefault, seniorBasicExempt } = useBusinessFeatures()
   const can = useCan()
   const showCost = can("see_costs")
   const stockLocked = !!item && !can("adjust_stock")
@@ -83,6 +84,7 @@ function ProductForm({
     const form = new FormData(e.currentTarget)
     const text = (key: string) => String(form.get(key) ?? "")
     const level = text("reorder_level").trim()
+    const senior = text("senior_discount")
     const input: ProductInput = {
       name: text("name"),
       brand: text("brand"),
@@ -92,6 +94,7 @@ function ProductForm({
       price_sell: Number(form.get("price_sell")),
       current_stock: Number(form.get("current_stock")),
       reorder_level: level === "" ? null : Number(level),
+      senior_discount: senior === "" ? null : Number(senior),
       ...(has("suppliers") ? { supplier_id: supplierId } : {}),
       ...(has("categories") ? { category: text("category") } : {}),
       ...(has("locations") ? { location: text("location") } : {}),
@@ -227,6 +230,18 @@ function ProductForm({
             </datalist>
           </label>
         )}
+        <label>
+          <span className="label">Senior / PWD discount</span>
+          <select className="input" name="senior_discount" defaultValue={item?.senior_discount == null ? "" : String(item.senior_discount)}>
+            <option value="">Your default ({SENIOR_RATE_LABELS[seniorDefault as SeniorRate]})</option>
+            <option value="20">{SENIOR_RATE_LABELS[20]}</option>
+            <option value="5">
+              {SENIOR_RATE_LABELS[5]}
+              {seniorBasicExempt ? " (off: BMBE)" : ""}
+            </option>
+            <option value="0">{SENIOR_RATE_LABELS[0]}</option>
+          </select>
+        </label>
         <label>
           <span className="label">Low-stock level</span>
           <input className="input" name="reorder_level" type="number" min="0" step="1" defaultValue={item?.reorder_level ?? ""} placeholder={`Default: ${lowStock}`} />

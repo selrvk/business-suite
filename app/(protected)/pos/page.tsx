@@ -12,7 +12,7 @@ export default async function PosPage() {
   const supabase = await getSupabase()
   const [{ business }, { data: items, error }, customers] = await Promise.all([
     requireUser(),
-    fetchAll<Item>((from, to) => supabase.from("items").select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell").order("name").order("id").range(from, to)),
+    fetchAll<Item>((from, to) => supabase.from("items").select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell, senior_discount").order("name").order("id").range(from, to)),
     fetchAll<PosCustomer>((from, to) => supabase.from("customers").select("id, name, balance, credit_limit").order("name").order("id").range(from, to)),
   ])
   if (error ?? customers.error) return <DbError error={(error ?? customers.error)!} />

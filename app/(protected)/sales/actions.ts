@@ -71,6 +71,16 @@ export async function createSale(input: {
   return { ok: true, data: { id: Number(sale.id), number: sale.number, total: Number(sale.total), onCredit } }
 }
 
+/** How much 5% Senior/PWD discount (basic goods) this ID got here this week; the law caps it at ₱125. */
+export async function seniorWeekUsed(kind: "senior" | "pwd", idNo: string): Promise<ActionResult<number>> {
+  const g = await guard()
+  if (!g.ok) return g
+  if ((kind !== "senior" && kind !== "pwd") || !idNo.trim()) return { ok: true, data: 0 }
+  const { data, error } = await g.session.supabase.rpc("senior_week_used", { p_kind: kind, p_id_no: idNo.trim().slice(0, 60) })
+  if (error) return { ok: false, error: dbMessage(error) }
+  return { ok: true, data: Number(data ?? 0) }
+}
+
 /** Voids a completed sale: stock goes back, credit comes off the customer's balance. */
 export async function voidSale(orderId: number, reason: string): Promise<ActionResult> {
   const g = await guard({ permission: "cancel_sales" })

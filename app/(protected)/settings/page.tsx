@@ -1,11 +1,13 @@
 import { headers } from "next/headers"
-import { Blocks, Building2, HardDriveDownload, Link2, Shield, User } from "lucide-react"
+import { BadgePercent, Blocks, Building2, HardDriveDownload, Link2, Shield, User } from "lucide-react"
 import { DownloadAllData } from "@/components/download-all-data"
 import { PageHeader } from "@/components/page-header"
 import { requireUser } from "@/lib/auth"
 import { MODULE_INFO, config } from "@/lib/config"
-import { OPTION_INFO, businessModules, customFields, type BusinessType, type ProductOption } from "@/lib/features"
+import { fetchAll } from "@/lib/db"
+import { OPTION_INFO, businessModules, customFields, hasOption, type BusinessType, type ProductOption } from "@/lib/features"
 import { FeaturesForm } from "./features-form"
+import { SeniorForm, type CategoryRates } from "./senior-form"
 import { BusinessForm, CopyLink, PasswordForm, Users, type UserRow } from "./settings-forms"
 
 export const metadata = { title: "Settings" }
@@ -16,6 +18,24 @@ export default async function SettingsPage() {
   const { data: users } = isAdmin
     ? await supabase.from("members").select("user_id, username, role, created_at, permissions").order("created_at")
     : { data: null }
+
+  // Senior/PWD rates by category, for setting a whole category at once.
+  let categories: CategoryRates[] | null = null
+  if (isAdmin && businessModules(business).includes("sales") && hasOption(business, "categories")) {
+    const { data: rows } = await fetchAll<{ category: string | null; senior_discount: number | null }>((from, to) =>
+      supabase.from("items").select("category, senior_discount").order("id").range(from, to),
+    )
+    const map = new Map<string, CategoryRates>()
+    for (const r of rows) {
+      const key = r.category ?? ""
+      const entry = map.get(key) ?? { category: r.category, products: 0, rates: {} }
+      const rate = r.senior_discount == null ? "default" : String(r.senior_discount)
+      entry.products++
+      entry.rates[rate] = (entry.rates[rate] ?? 0) + 1
+      map.set(key, entry)
+    }
+    categories = [...map.values()].sort((a, b) => (a.category === null ? 1 : b.category === null ? -1 : a.category.localeCompare(b.category)))
+  }
 
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https")
@@ -48,6 +68,18 @@ export default async function SettingsPage() {
             </div>
             <div className="card-body">
               <BusinessForm business={business} />
+            </div>
+          </section>
+        )}
+
+        {isAdmin && businessModules(business).includes("sales") && (
+          <section className="card" id="senior">
+            <div className="card-header">
+              <BadgePercent size={15} className="text-brand" />
+              <h2 className="display text-xl text-white">Senior Citizen &amp; PWD discounts</h2>
+            </div>
+            <div className="card-body">
+              <SeniorForm seniorDefault={business.senior_default ?? 5} basicExempt={!!business.senior_basic_exempt} categories={categories} />
             </div>
           </section>
         )}

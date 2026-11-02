@@ -41,6 +41,13 @@ export default async function ReceiptPage({
   const discountTotal = Number(o.discount_total ?? 0)
   const vatExempt = Number(o.vat_exempt ?? 0)
   const seniorOrPwd = o.discount_kind === "senior" || o.discount_kind === "pwd"
+  const who = o.discount_kind === "senior" ? "Senior Citizen" : "PWD"
+  // Discounts by kind: Senior/PWD 20% and 5% are on each line; older Senior/PWD sales had one 20% for the whole sale.
+  const sumLines = (keep: (l: OrderLine) => boolean) => items.filter(keep).reduce((s, l) => s + Number(l.discount ?? 0), 0)
+  const senior20 = sumLines(l => l.senior_rate === 20)
+  const senior5 = sumLines(l => l.senior_rate === 5)
+  const promos = sumLines(l => !l.senior_rate)
+  const saleLevel = Math.round((discountTotal - senior20 - senior5 - promos) * 100) / 100
 
   return (
     <div className="receipt-screen">
@@ -95,7 +102,7 @@ export default async function ReceiptPage({
             </div>
             {Number(l.discount ?? 0) > 0 && (
               <div className="row">
-                <span>&nbsp;&nbsp;Less discount</span>
+                <span>&nbsp;&nbsp;{l.senior_rate ? `Less ${o.discount_kind === "senior" ? "SC" : "PWD"} ${l.senior_rate}%` : "Less discount"}</span>
                 <span>-{money(Number(l.discount))}</span>
               </div>
             )}
@@ -115,10 +122,30 @@ export default async function ReceiptPage({
                 <span>-{money(vatExempt)}</span>
               </div>
             )}
-            <div className="row">
-              <span>{seniorOrPwd ? `Less ${o.discount_kind === "senior" ? "Senior Citizen" : "PWD"} 20%` : "Less discount"}</span>
-              <span>-{money(discountTotal)}</span>
-            </div>
+            {senior20 > 0 && (
+              <div className="row">
+                <span>Less {who} 20%</span>
+                <span>-{money(senior20)}</span>
+              </div>
+            )}
+            {senior5 > 0 && (
+              <div className="row">
+                <span>Less {who} 5% (basic goods)</span>
+                <span>-{money(senior5)}</span>
+              </div>
+            )}
+            {promos > 0 && (
+              <div className="row">
+                <span>Less discounts</span>
+                <span>-{money(promos)}</span>
+              </div>
+            )}
+            {saleLevel > 0 && (
+              <div className="row">
+                <span>{seniorOrPwd && senior20 + senior5 === 0 ? `Less ${who} 20%` : "Less discount"}</span>
+                <span>-{money(saleLevel)}</span>
+              </div>
+            )}
           </>
         )}
         <div className="row big">
@@ -149,6 +176,7 @@ export default async function ReceiptPage({
             <div className="rule" />
             <p>{o.discount_kind === "senior" ? "Senior Citizen" : "PWD"}: {o.discount_person}</p>
             <p>ID no.: {o.discount_id_no}</p>
+            {senior5 > 0 && <p>For the purchase booklet: {money(senior5)} (5% on basic goods)</p>}
             <p style={{ marginTop: 14 }}>Signature: ______________________</p>
           </>
         )}

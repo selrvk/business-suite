@@ -89,7 +89,7 @@ const CHAPTERS: Chapter[] = [
     points: [
       "Search, tap or scan items into the cart; change is worked out for you",
       "Cash, GCash, Maya, card or bank transfer, with reference numbers",
-      "Senior Citizen and PWD discounts, VAT-exempt when you're VAT-registered",
+      "Senior Citizen and PWD discounts per item: 20% on medicine and meals, 5% on basic goods",
       "Receipts for 80mm thermal printers, and pending orders for phone orders",
     ],
     screen: <CounterScreen />,
@@ -172,7 +172,7 @@ const CHAPTERS: Chapter[] = [
 ]
 
 const LOCAL: { icon: LucideIcon; title: string; text: string }[] = [
-  { icon: BadgePercent, title: "Senior Citizen & PWD", text: "The discount with name and ID, VAT-exempt for VAT-registered businesses." },
+  { icon: BadgePercent, title: "Senior Citizen & PWD", text: "20% on medicine and meals, 5% on basic goods with the weekly limit, worked out item by item." },
   { icon: Wallet, title: "GCash, Maya and bank", text: "Every payment method, with its reference number on the receipt." },
   { icon: HandCoins, title: "Utang, with limits", text: "Customers' tabs, payments and balances, without the notebook." },
   { icon: CalendarRange, title: "Payroll cut-offs", text: "Timesheets for the 1st–15th and the 16th to the end of the month." },

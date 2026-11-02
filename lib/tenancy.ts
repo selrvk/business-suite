@@ -1,4 +1,5 @@
 import { slugify } from "./config"
+import { seniorDefaultFor, type BusinessType } from "./features"
 import { createSupabaseAdminClient } from "./supabase/admin"
 
 type Admin = ReturnType<typeof createSupabaseAdminClient>
@@ -34,7 +35,12 @@ export async function createBusinessFor(
   const slug = await freeSlug(admin, slugify(businessName))
   const { data: business, error } = await admin
     .from("businesses")
-    .insert({ name: businessName, slug, ...(features ?? {}) })
+    .insert({
+      name: businessName,
+      slug,
+      ...(features ?? {}),
+      ...(features ? { senior_default: seniorDefaultFor(features.business_type as BusinessType | null) } : {}),
+    })
     .select("id")
     .single()
   if (error) throw error

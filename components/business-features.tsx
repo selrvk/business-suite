@@ -16,6 +16,10 @@ type BusinessFeatures = {
   isAdmin: boolean
   /** VAT-registered businesses drop VAT on Senior/PWD sales. */
   vatRegistered: boolean
+  /** Senior/PWD rate for products that don't set their own (20, 5 or 0). */
+  seniorDefault: number
+  /** BMBE or cooperative: no 5% on basic goods. */
+  seniorBasicExempt: boolean
 }
 
 const Context = createContext<BusinessFeatures>({
@@ -26,6 +30,8 @@ const Context = createContext<BusinessFeatures>({
   permissions: [],
   isAdmin: false,
   vatRegistered: false,
+  seniorDefault: 5,
+  seniorBasicExempt: false,
 })
 
 /** Gives every app page the business's product options and custom fields (set in the app layout). */

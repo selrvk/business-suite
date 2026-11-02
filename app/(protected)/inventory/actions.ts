@@ -45,6 +45,7 @@ export async function importProducts(
       category: r.category,
       location: r.location,
       reorder_level: r.reorder_level,
+      senior_discount: r.senior_discount,
       extra: r.extra,
       expires_on: r.expires_on,
       lot: r.lot,
@@ -72,6 +73,8 @@ export type ProductInput = {
   category?: string
   location?: string
   reorder_level?: number | null
+  /** Senior/PWD discount: 20, 5 or 0; null = the business's default. Left out = keep what's saved. */
+  senior_discount?: number | null
   /** Custom field values, by field id. */
   extra?: Record<string, string>
   /** For a new product's opening stock, when expiry dates are on. */
@@ -122,6 +125,10 @@ function clean(input: ProductInput, fields: CustomField[]) {
     const level = input.reorder_level
     if (level !== null && (!Number.isInteger(level) || level < 0)) return { error: "Low-stock level must be a whole number, zero or more." }
     optional.reorder_level = level
+  }
+  if (input.senior_discount !== undefined) {
+    if (input.senior_discount !== null && ![0, 5, 20].includes(input.senior_discount)) return { error: "Pick a Senior/PWD discount." }
+    optional.senior_discount = input.senior_discount
   }
   const extra = cleanExtra(input.extra, fields)
   if (extra && "error" in extra) return { error: extra.error as string }

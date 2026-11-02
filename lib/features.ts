@@ -98,6 +98,11 @@ export type FeaturesInput = {
   customFields: { id?: string; label: string; type: string }[]
 }
 
+/** The Senior/PWD discount most of a new business's products get, from what it sells. */
+export function seniorDefaultFor(type: BusinessType | null): 0 | 5 | 20 {
+  return type === "pharmacy" || type === "food" ? 20 : 5
+}
+
 /** Checks and tidies features chosen in a form. Returns an error message instead if something's wrong. */
 export function cleanFeatures(input: FeaturesInput):
   | { business_type: BusinessType | null; modules: ModuleKey[]; options: ProductOption[]; custom_fields: CustomField[] }

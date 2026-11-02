@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CircleCheck, ClipboardList, Minus, Percent, Plus, Printer, ShoppingCart, Trash2, X } from "lucide-react"
@@ -10,9 +10,9 @@ import { QtyInput, ScanSafeInput } from "@/components/qty-input"
 import { useScanner } from "@/hooks/use-scanner"
 import { beep } from "@/lib/beep"
 import { money } from "@/lib/format"
-import { lineDiscountAmount, saleTotals, type LineDiscount, type SaleDiscount } from "@/lib/sale-math"
+import { SENIOR_WEEKLY_CAP, lineDiscountAmount, saleTotals, seniorRate, type LineDiscount, type SaleDiscount } from "@/lib/sale-math"
 import type { Item } from "@/lib/types"
-import { createSale } from "../sales/actions"
+import { createSale, seniorWeekUsed } from "../sales/actions"
 
 type Line = { id: number; qty: number }
 type Done = { id: number; number: number; total: number; change: number | null; pending: boolean; onCredit: number; owes: number | null }
@@ -23,12 +23,14 @@ const SHOWN = 24
 
 export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]; lowStock: number; customers?: PosCustomer[] }) {
   const can = useCan()
-  const { vatRegistered } = useBusinessFeatures()
+  const { vatRegistered, seniorDefault, seniorBasicExempt } = useBusinessFeatures()
   const [lineDiscounts, setLineDiscounts] = useState<Record<number, LineDiscount>>({})
   const [editingLine, setEditingLine] = useState<number | null>(null)
   const [discountMode, setDiscountMode] = useState<"none" | "senior" | "pwd" | "other">("none")
   const [scPerson, setScPerson] = useState("")
   const [scId, setScId] = useState("")
+  // 5% Senior/PWD discount this ID already got this week (capped at ₱125), looked up as the ID is typed.
+  const [seniorUsed, setSeniorUsed] = useState<{ key: string; amount: number } | null>(null)
   const [otherType, setOtherType] = useState<"amount" | "percent">("percent")
   const [otherValue, setOtherValue] = useState("")
   const [payLater, setPayLater] = useState(false)
@@ -61,10 +63,26 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
       : discountMode === "other" && Number(otherValue) > 0
         ? { kind: otherType, value: Number(otherValue) }
         : null
+  const senior = discountMode === "senior" || discountMode === "pwd"
+  const seniorKey = senior && scId.trim() ? `${discountMode}:${scId.trim().toUpperCase().replace(/[^A-Z0-9]/g, "")}` : ""
+  useEffect(() => {
+    if (!seniorKey) return
+    const [kind, id] = [discountMode as "senior" | "pwd", scId.trim()]
+    const timer = setTimeout(async () => {
+      const result = await seniorWeekUsed(kind, id)
+      if (result.ok) setSeniorUsed({ key: seniorKey, amount: result.data })
+    }, 350)
+    return () => clearTimeout(timer)
+    // Looked up again only when the person (kind + ID) changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seniorKey])
+  const usedThisWeek = seniorUsed && seniorUsed.key === seniorKey ? seniorUsed.amount : 0
+  const rates = { seniorDefault, seniorBasicExempt }
   const totals = saleTotals(
-    lines.map(l => ({ price: l.item.price_sell, qty: l.qty, discount: lineDiscounts[l.id] ?? null })),
+    lines.map(l => ({ price: l.item.price_sell, qty: l.qty, discount: lineDiscounts[l.id] ?? null, seniorRate: seniorRate(l.item.senior_discount, rates) })),
     saleDiscount,
     vatRegistered,
+    usedThisWeek,
   )
   const total = totals.total
 
@@ -159,7 +177,7 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
     }
     setBusy(true)
     const result = await createSale({
-      lines: lines.map(l => ({ item_id: l.id, quantity: l.qty, discount: discountMode === "senior" || discountMode === "pwd" ? null : (lineDiscounts[l.id] ?? null) })),
+      lines: lines.map(l => ({ item_id: l.id, quantity: l.qty, discount: lineDiscounts[l.id] ?? null })),
       customerName: customer,
       complete,
       paymentMethod: paidNow > 0 ? method : null,
@@ -180,7 +198,8 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
       id: result.data.id,
       number: result.data.number,
       total: result.data.total,
-      change: complete && method === "Cash" && paidNow > 0 ? (paid ?? paidNow) - paidNow : null,
+      // From the saved total, which is the one that counts.
+      change: complete && method === "Cash" && paidNow > 0 ? (paid ?? paidNow) - (credit ? paidNow : result.data.total) : null,
       pending: !complete,
       onCredit: result.data.onCredit,
       owes: complete && result.data.onCredit > 0 && customerMatch ? Number(customerMatch.balance) + result.data.onCredit : null,
@@ -310,10 +329,11 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
               {lines.length === 0 ? (
                 <p className="empty">Scan an item to start a sale.</p>
               ) : (
-                lines.map(({ id, qty, item }) => {
+                lines.map(({ id, qty, item }, index) => {
                   const lineTotal = item.price_sell * qty
-                  const disc = discountMode === "senior" || discountMode === "pwd" ? null : (lineDiscounts[id] ?? null)
-                  const off = lineDiscountAmount(lineTotal, disc)
+                  const applied = totals.perLine[index]
+                  const off = applied ? applied.off + applied.vatExempt : lineDiscountAmount(lineTotal, lineDiscounts[id] ?? null)
+                  const promoOff = lineDiscountAmount(lineTotal, lineDiscounts[id] ?? null)
                   return (
                     <div key={id} className="px-4 py-2.5 flex flex-col gap-2">
                       <div className="flex items-center gap-2">
@@ -322,9 +342,16 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
                           <p className="text-xs faint">
                             {money(item.price_sell)} × {qty} = <span className={off ? "line-through" : "text-white"}>{money(lineTotal)}</span>
                             {off > 0 && <span className="text-white"> {money(lineTotal - off)}</span>}
+                            {senior && applied?.senior && (
+                              <span className="text-good">
+                                {" "}
+                                · {applied.senior}%{applied.senior === 20 && applied.vatExempt > 0 ? ", no VAT" : ""}
+                              </span>
+                            )}
+                            {senior && !applied?.senior && promoOff === 0 && <span> · no {discountMode === "senior" ? "Senior" : "PWD"} discount</span>}
                           </p>
                         </div>
-                        {can("discounts") && discountMode !== "senior" && discountMode !== "pwd" && (
+                        {can("discounts") && (
                           <button
                             className={`btn btn-icon ${off ? "btn-secondary text-brand" : "btn-ghost"}`}
                             onClick={() => setEditingLine(editingLine === id ? null : id)}
@@ -371,7 +398,8 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
                             placeholder="0"
                             autoFocus
                           />
-                          {off > 0 && <span className="text-good">−{money(off)}</span>}
+                          {promoOff > 0 && <span className="text-good">−{money(promoOff)}</span>}
+                          {senior && promoOff > 0 && <span className="faint">They get this or the {discountMode === "senior" ? "Senior" : "PWD"} discount, whichever is bigger.</span>}
                         </div>
                       )}
                     </div>
@@ -397,9 +425,16 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
                   <div className="grid grid-cols-2 gap-2">
                     <ScanSafeInput className="input input-sm" value={scPerson} onChange={setScPerson} onScan={handleCode} placeholder={`${discountMode === "senior" ? "Senior Citizen" : "PWD"}'s name`} />
                     <ScanSafeInput className="input input-sm" value={scId} onChange={setScId} onScan={handleCode} placeholder="ID number" />
-                    <p className="col-span-2 text-[0.7rem] faint">
-                      20% off{vatRegistered ? ", VAT-exempt" : ""}. Other discounts don&apos;t apply on top.
+                    <p className="col-span-2 text-[0.7rem] faint leading-relaxed">
+                      Medicine and meals: 20% off{vatRegistered ? ", VAT-exempt" : ""}.{" "}
+                      {seniorBasicExempt
+                        ? "Basic goods: none (you're a BMBE or cooperative)."
+                        : `Basic goods: 5% off, up to ${money(SENIOR_WEEKLY_CAP)} a week${scId.trim() ? ` (${money(Math.max(0, SENIOR_WEEKLY_CAP - usedThisWeek))} left this week for this ID)` : ""}.`}{" "}
+                      Not both a promo and this discount.
                     </p>
+                    {totals.senior5 > 0 && (
+                      <p className="col-span-2 text-xs text-warn">Write {money(totals.senior5)} in their purchase booklet.</p>
+                    )}
                   </div>
                 )}
                 {discountMode === "other" && (
@@ -431,10 +466,24 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
                         <span>−{money(totals.vatExempt)}</span>
                       </p>
                     )}
-                    <p className="flex justify-between text-good">
-                      <span>{discountMode === "senior" ? "Senior Citizen 20%" : discountMode === "pwd" ? "PWD 20%" : "Discounts"}</span>
-                      <span>−{money(totals.discountTotal)}</span>
-                    </p>
+                    {totals.senior20 > 0 && (
+                      <p className="flex justify-between text-good">
+                        <span>{discountMode === "senior" ? "Senior Citizen" : "PWD"} 20%</span>
+                        <span>−{money(totals.senior20)}</span>
+                      </p>
+                    )}
+                    {totals.senior5 > 0 && (
+                      <p className="flex justify-between text-good">
+                        <span>{discountMode === "senior" ? "Senior Citizen" : "PWD"} 5% (basic goods)</span>
+                        <span>−{money(totals.senior5)}</span>
+                      </p>
+                    )}
+                    {totals.promos + totals.saleDiscount > 0 && (
+                      <p className="flex justify-between text-good">
+                        <span>Discounts</span>
+                        <span>−{money(totals.promos + totals.saleDiscount)}</span>
+                      </p>
+                    )}
                   </>
                 )}
                 <div className="flex items-end justify-between">

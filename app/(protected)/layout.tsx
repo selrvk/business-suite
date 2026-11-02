@@ -52,6 +52,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               permissions: session.permissions,
               isAdmin: session.isAdmin,
               vatRegistered: !!session.business.vat_registered,
+              seniorDefault: session.business.senior_default ?? 5,
+              seniorBasicExempt: !!session.business.senior_basic_exempt,
             }}
           >
             {children}

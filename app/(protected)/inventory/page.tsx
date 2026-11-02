@@ -26,7 +26,7 @@ export default async function InventoryPage() {
     fetchAll<Item>((from, to) =>
       supabase
         .from("items")
-        .select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell, supplier_id, category, location, reorder_level, extra")
+        .select("id, barcode, name, brand, unit, current_stock, price_buy, price_sell, supplier_id, category, location, reorder_level, senior_discount, extra")
         .order("id")
         .range(from, to),
     ),

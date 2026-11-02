@@ -87,8 +87,8 @@ export function BusinessForm({ business }: { business: Business }) {
           <span>
             <span className="block text-sm font-semibold text-white">VAT-registered</span>
             <span className="block text-xs faint">
-              Senior Citizen and PWD sales then also drop the 12% VAT before the 20% discount, as the law requires for
-              VAT-registered businesses. Leave off if you&apos;re non-VAT.
+              Senior Citizen and PWD sales of medicine and meals then also drop the 12% VAT before the 20% discount, as the law
+              requires for VAT-registered businesses. Leave off if you&apos;re non-VAT.
             </span>
           </span>
         </label>
