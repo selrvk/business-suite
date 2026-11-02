@@ -68,6 +68,16 @@ export default async function LoginPage() {
           </Link>
           <br />
           <span className="text-xs faint">Staff can also use their business&apos;s staff link, with just their username.</span>
+          <br />
+          <span className="text-xs faint">
+            <Link href="/terms" className="underline decoration-dotted">
+              Terms
+            </Link>{" "}
+            ·{" "}
+            <Link href="/privacy" className="underline decoration-dotted">
+              Privacy
+            </Link>
+          </span>
         </>
       }
     >

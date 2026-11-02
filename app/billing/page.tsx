@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ArrowLeft, CircleAlert, CircleCheck, Hourglass } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
+import { DownloadAllData } from "@/components/download-all-data"
 import { access, requireUser } from "@/lib/auth"
 import { MODULE_INFO, config } from "@/lib/config"
 import { formatDate, money, price } from "@/lib/format"
@@ -177,6 +178,26 @@ export default async function BillingPage() {
           </div>
         </section>
       )}
+
+      {isAdmin && (
+        <section className="card card-body flex flex-col gap-3">
+          <p className="section-title">Your data</p>
+          <p className="text-sm muted">
+            Your records stay safe whether or not your access is active. Download a copy of everything as an Excel file any time.
+          </p>
+          <DownloadAllData businessName={business.name} slug={business.slug} />
+        </section>
+      )}
+
+      <p className="text-xs faint text-center">
+        <Link href="/terms" className="underline decoration-dotted">
+          Terms of Service
+        </Link>{" "}
+        ·{" "}
+        <Link href="/privacy" className="underline decoration-dotted">
+          Privacy Policy
+        </Link>
+      </p>
     </main>
   )
 }

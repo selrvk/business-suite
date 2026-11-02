@@ -1,7 +1,9 @@
 import "server-only"
 import { config } from "./config"
-import { canReceiveEmail, sendEmail, siteUrl } from "./email"
-import { formatDate, money, price } from "./format"
+import { canReceiveEmail, sendEmail, siteUrl, type Email } from "./email"
+import type { Digest } from "./digest"
+import { formatDate, formatLongDate, formatShortDate, money, num, price, startOfDay } from "./format"
+import { margin, percent } from "./reports"
 import { createSupabaseAdminClient } from "./supabase/admin"
 
 // The emails the app sends. Each one is a no-op when email isn't set up.
@@ -194,4 +196,82 @@ export async function notifyDayClosed(
     ],
     button: { label: "See the details", url: link(`/sales/close?day=${p.day}`) },
   })
+}
+
+/** To the business's owners: the daily or weekly summary (see lib/digest.ts). */
+export async function sendDigest(business: { id: string; name: string }, d: Digest) {
+  const to = await ownerEmails(business.id)
+  if (!to.length) return false
+  return sendEmail({ to, ...digestEmail(business.name, d) })
+}
+
+/** The summary email's content. */
+export function digestEmail(businessName: string, d: Digest): Omit<Email, "to"> {
+  const business = { name: businessName }
+  const weekly = d.kind === "weekly"
+  const when = weekly
+    ? `${formatShortDate(startOfDay(d.from))} – ${formatShortDate(startOfDay(d.to))}`
+    : formatLongDate(startOfDay(d.from))
+  const r = d.report
+  const plural = (n: number, word: string, many = `${word}s`) => `${num(n)} ${n === 1 ? word : many}`
+
+  const paragraphs: string[] = []
+  if (r) {
+    if (r.sales) {
+      const change =
+        d.previousRevenue && d.previousRevenue > 0
+          ? Math.round(((r.revenue - d.previousRevenue) / d.previousRevenue) * 100)
+          : null
+      const compared =
+        change == null ? "" : change === 0 ? `, the same as the ${weekly ? "week" : "day"} before` : `, ${Math.abs(change)}% ${change > 0 ? "more" : "less"} than the ${weekly ? "week" : "day"} before`
+      paragraphs.push(`${plural(r.sales, "sale")} for ${money(r.revenue)}${compared}. Profit: ${money(r.revenue - r.cost)} (${percent(margin(r.revenue, r.cost))} margin).`)
+    } else {
+      paragraphs.push(`No sales were recorded ${weekly ? "last week" : "yesterday"}.`)
+    }
+  }
+
+  const sales: [string, string][] = []
+  if (r?.sales) {
+    sales.push(["Sales", money(r.revenue)], ["Cost of the goods", money(r.cost)], ["Profit", money(r.revenue - r.cost)])
+    if (r.discounts > 0) sales.push(["Discounts given", money(r.discounts)])
+  }
+  if (d.voids.count) sales.push(["Voided sales", `${num(d.voids.count)} (${money(d.voids.total)})`])
+  if (d.drawer) {
+    const diff = d.drawer.difference
+    sales.push([
+      `Cash drawer, ${plural(d.drawer.days, "day")} closed`,
+      Math.abs(diff) < 0.005 ? "Matched" : `${diff > 0 ? "Over" : "Short"} by ${money(Math.abs(diff))}`,
+    ])
+  }
+
+  const best: [string, string][] = (r?.by_product ?? [])
+    .slice(0, 5)
+    .map(p => [p.name, `${num(p.quantity)} sold · ${money(p.profit)} profit`])
+
+  const attention: [string, string][] = []
+  if (d.lowStock?.count) attention.push(["Low on stock", `${plural(d.lowStock.count, "product")}${d.lowStock.out ? `, ${num(d.lowStock.out)} out` : ""}`])
+  if (d.expiry?.expired) attention.push(["Expired, still in stock", plural(d.expiry.expired, "batch", "batches")])
+  if (d.expiry?.soon) attention.push(["Expiring within 30 days", plural(d.expiry.soon, "batch", "batches")])
+  if (d.owed) attention.push(["Customers owe you", `${money(d.owed.total)} (${plural(d.owed.customers, "customer")})`])
+  if (weekly && r?.slow_movers.length) {
+    const value = r.slow_movers.reduce((s, x) => s + x.value, 0)
+    attention.push(["Not sold in 60 days", `${plural(r.slow_movers.length, "product")}, ${money(value)} at cost`])
+  }
+
+  const subject = r?.sales
+    ? `${business.name}: ${money(r.revenue)} in sales ${weekly ? "last week" : "yesterday"}`
+    : `${business.name}: your ${weekly ? "weekly" : "daily"} summary`
+
+  return {
+    subject,
+    heading: weekly ? `Your week, ${when}` : `Yesterday, ${when}`,
+    paragraphs,
+    sections: [
+      { title: weekly ? "Last week" : "Yesterday", rows: sales },
+      { title: "Best sellers", rows: best },
+      { title: "Needs attention", rows: attention },
+    ],
+    button: r ? { label: "Open the profit report", url: link(`/reports?from=${d.from}&to=${d.to}`) } : { label: `Open ${config.appName}`, url: link("/dashboard") },
+    footnote: `You get this ${weekly ? "every Monday" : "every morning"} as an owner of ${business.name}. To change or stop it, go to Settings, then Business.`,
+  }
 }

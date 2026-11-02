@@ -36,6 +36,8 @@ export type Email = {
   subject: string
   heading: string
   paragraphs: string[]
+  /** Small labelled tables after the paragraphs, e.g. a summary's numbers. */
+  sections?: { title: string; rows: [string, string][] }[]
   button?: { label: string; url: string }
   footnote?: string
 }
@@ -46,6 +48,18 @@ const escape = (s: string) =>
 function html(email: Email) {
   const p = (text: string, style = "") =>
     `<p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#33363d;${style}">${escape(text)}</p>`
+  const sections = (email.sections ?? [])
+    .filter(section => section.rows.length)
+    .map(
+      section => `<p style="margin:22px 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8a8d94">${escape(section.title)}</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${section.rows
+          .map(
+            ([label, value]) =>
+              `<tr><td style="padding:7px 12px 7px 0;border-top:1px solid #eeece6;font-size:14px;line-height:1.4;color:#5d6068">${escape(label)}</td><td align="right" style="padding:7px 0;border-top:1px solid #eeece6;font-size:14px;line-height:1.4;font-weight:600;color:${BRAND_COLORS.ink}">${escape(value)}</td></tr>`,
+          )
+          .join("")}</table>`,
+    )
+    .join("\n        ")
   const button = email.button
     ? `<p style="margin:22px 0 8px"><a href="${escape(email.button.url)}" style="display:inline-block;background:${BRAND_COLORS.tile};color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px">${escape(email.button.label)}</a></p>
        <p style="margin:0 0 14px;font-size:12px;line-height:1.5;color:#8a8d94">Or open this link: <a href="${escape(email.button.url)}" style="color:#8a8d94;word-break:break-all">${escape(email.button.url)}</a></p>`
@@ -58,6 +72,7 @@ function html(email: Email) {
       <tr><td style="padding:14px 28px 24px">
         <h1 style="margin:0 0 16px;font-size:21px;line-height:1.3;color:${BRAND_COLORS.ink}">${escape(email.heading)}</h1>
         ${email.paragraphs.map(t => p(t)).join("\n        ")}
+        ${sections}
         ${button}
         ${email.footnote ? p(email.footnote, "font-size:13px;color:#8a8d94;margin-top:18px") : ""}
       </td></tr>
@@ -72,6 +87,9 @@ function text(email: Email) {
     email.heading,
     "",
     ...email.paragraphs.flatMap(t => [t, ""]),
+    ...(email.sections ?? [])
+      .filter(section => section.rows.length)
+      .flatMap(section => [section.title.toUpperCase(), ...section.rows.map(([label, value]) => `${label}: ${value}`), ""]),
     ...(email.button ? [`${email.button.label}: ${email.button.url}`, ""] : []),
     ...(email.footnote ? [email.footnote, ""] : []),
     `Questions? Reply to this email or write to ${config.contactEmail}.`,

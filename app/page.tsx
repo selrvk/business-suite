@@ -84,7 +84,10 @@ const FAQ: [string, React.ReactNode][] = [
     "How do I pay?",
     `After your free trial, pay ${price(config.price.monthly)} a month${config.price.yearly ? " (or yearly)" : ""} by GCash or bank transfer and send the reference number from your Billing page. Your suite stays unlocked as soon as it's confirmed.`,
   ],
-  ["What happens if I stop paying?", "Your suite locks, but nothing is deleted. Pay again and you pick up exactly where you left off."],
+  [
+    "What happens if I stop paying?",
+    "Your suite locks, but nothing is deleted, and you can still download all your records as an Excel file. Pay again and you pick up exactly where you left off.",
+  ],
 ]
 
 export default async function HomePage() {
@@ -380,6 +383,12 @@ export default async function HomePage() {
               <a href="#pricing" className="underline">
                 Pricing
               </a>
+              <Link href="/terms" className="underline">
+                Terms
+              </Link>
+              <Link href="/privacy" className="underline">
+                Privacy
+              </Link>
               {config.contactEmail ? (
                 <a href={`mailto:${config.contactEmail}`} className="underline">
                   {config.contactEmail}

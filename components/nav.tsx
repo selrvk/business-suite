@@ -25,6 +25,7 @@ import {
   ShoppingBasket,
   Sheet,
   Timer,
+  TrendingUp,
   Truck,
   Users,
   X,
@@ -33,6 +34,7 @@ import {
 } from "lucide-react"
 import { config } from "@/lib/config"
 import { BrandMark } from "./brand-mark"
+import { InstallAppButton } from "./install-app-button"
 import LogoutButton from "./logout-button"
 
 type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; show?: boolean }
@@ -52,6 +54,7 @@ function navGroups(modules: string[], options: string[], permissions: string[]):
         { href: "/pos", label: "Point of Sale", icon: ScanBarcode, show: has("sales") },
         { href: "/orders", label: "Pending Orders", icon: ClipboardList, show: has("sales") },
         { href: "/sales", label: "Sales History", icon: Receipt, exact: true, show: has("sales") },
+        { href: "/reports", label: "Profit Report", icon: TrendingUp, show: has("sales") && permissions.includes("see_costs") },
         { href: "/customers", label: "Customers", icon: Contact, show: has("sales") },
         { href: "/sales/close", label: "End of Day", icon: Lock, show: has("sales") },
       ],
@@ -174,6 +177,7 @@ export default function Nav({
       {isAdmin && footerLink("/activity", "Activity Log", ScrollText)}
       {isAdmin && footerLink("/billing", "Billing", CreditCard)}
       {isPlatformAdmin && footerLink("/platform", "Platform admin", ShieldCheck)}
+      <InstallAppButton />
       <LogoutButton />
       <p className="px-5 pt-3 text-[0.68rem] faint truncate">
         Signed in as <span className="muted font-semibold">{username}</span>

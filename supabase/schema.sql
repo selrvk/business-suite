@@ -46,6 +46,9 @@ alter table public.businesses add column if not exists custom_fields jsonb not n
 alter table public.businesses add column if not exists receipt_note text default 'This is not an official receipt.';
 -- VAT-registered businesses also drop the 12% VAT on Senior Citizen/PWD sales.
 alter table public.businesses add column if not exists vat_registered boolean not null default false;
+-- Email summary for the owners: 'weekly' (Mondays), 'daily', or 'off'.
+alter table public.businesses add column if not exists digest text not null default 'weekly'
+  check (digest in ('off', 'daily', 'weekly'));
 
 -- Who can log in to which business. One business per login.
 create table if not exists public.members (
@@ -492,6 +495,9 @@ begin
 end $$;
 -- A discount on one line of a sale (pesos, for the whole line).
 alter table public.order_item add column if not exists discount numeric(12, 2) not null default 0;
+-- What each item cost when it was sold, for profit reports. Older sales have none (reports estimate them).
+alter table public.order_item add column if not exists cost_at_time numeric(12, 2);
+create index if not exists order_item_item_idx on public.order_item (item_id);
 
 -- End-of-day closings: the day's numbers, and the cash counted in the drawer.
 create table if not exists public.day_closings (
@@ -651,6 +657,7 @@ declare
   v_paid numeric(12, 2);
   v_credit numeric(12, 2) := 0;
   v_price numeric(12, 2);
+  v_cost numeric(12, 2);
   v_name text;
   v_line numeric(12, 2);
   v_disc numeric(12, 2);
@@ -673,7 +680,7 @@ begin
     if (e ->> 'quantity')::integer is null or (e ->> 'quantity')::integer <= 0 then
       raise exception 'Quantities must be at least 1';
     end if;
-    select price_sell, name into v_price, v_name from items where id = (e ->> 'item_id')::bigint;
+    select price_sell, price_buy, name into v_price, v_cost, v_name from items where id = (e ->> 'item_id')::bigint;
     if not found then
       raise exception 'A product in this sale no longer exists';
     end if;
@@ -683,8 +690,8 @@ begin
       when 'percent' then round(v_line * least(greatest(coalesce((e ->> 'discount_value')::numeric, 0), 0), 100) / 100, 2)
       else 0
     end;
-    insert into order_item (order_id, item_id, item_name, quantity, price_at_time, discount)
-    values (v_order_id, (e ->> 'item_id')::bigint, v_name, (e ->> 'quantity')::integer, v_price, v_disc);
+    insert into order_item (order_id, item_id, item_name, quantity, price_at_time, discount, cost_at_time)
+    values (v_order_id, (e ->> 'item_id')::bigint, v_name, (e ->> 'quantity')::integer, v_price, v_disc, v_cost);
     v_subtotal := v_subtotal + v_line;
     v_line_discounts := v_line_discounts + v_disc;
   end loop;
@@ -875,6 +882,102 @@ as $$
       ) t
     )
   );
+$$;
+
+-- Profit for a period: revenue (after every discount), cost, and profit, by
+-- day, product and category, plus slow movers (in stock, no sales in
+-- p_slow_days). Each sale's discounts are shared across its lines by value.
+-- Cost is what the item cost when sold, or today's cost for older sales
+-- ("estimated_lines"). Needs "see_costs". The server (no login) passes
+-- p_business_id for the owners' email digest.
+create or replace function public.profit_report(
+  p_from timestamptz,
+  p_to timestamptz,
+  p_tz text default 'Asia/Manila',
+  p_slow_days integer default 60,
+  p_business_id uuid default null
+)
+returns json
+language plpgsql
+stable
+set search_path = public
+as $$
+declare
+  v_biz uuid := case when auth.uid() is null then p_business_id end;
+begin
+  if v_biz is null then
+    v_biz := current_business_id();
+    if not has_permission('see_costs') then
+      raise exception 'You don''t have permission to see costs and profit';
+    end if;
+  end if;
+  if v_biz is null then
+    raise exception 'Not signed in to a business';
+  end if;
+
+  return (
+    with sales as (
+      select id, total_price, discount_total, date_completed from orders
+      where business_id = v_biz and status = 'COMPLETED' and date_completed >= p_from and date_completed < p_to
+    ),
+    lines as (
+      select oi.order_id, oi.item_id, coalesce(oi.item_name, i.name) as name, i.category, oi.quantity,
+             oi.quantity * oi.price_at_time - oi.discount as line_net,
+             oi.quantity * coalesce(oi.cost_at_time, i.price_buy, 0) as cost,
+             oi.cost_at_time is null as estimated
+      from order_item oi join sales s on s.id = oi.order_id left join items i on i.id = oi.item_id
+    ),
+    factors as (
+      select s.id, s.date_completed, case when sum(l.line_net) > 0 then s.total_price / sum(l.line_net) else 0 end as f
+      from sales s join lines l on l.order_id = s.id
+      group by s.id, s.total_price, s.date_completed
+    ),
+    rev as (
+      select l.*, l.line_net * f.f as revenue, f.date_completed from lines l join factors f on f.id = l.order_id
+    )
+    select json_build_object(
+      'sales', (select count(*) from sales),
+      'revenue', (select round(coalesce(sum(revenue), 0), 2) from rev),
+      'cost', (select round(coalesce(sum(cost), 0), 2) from rev),
+      'discounts', (select coalesce(sum(discount_total), 0) from sales),
+      'items_sold', (select coalesce(sum(quantity), 0) from rev),
+      'estimated_lines', (select count(*) from rev where estimated),
+      'by_day', (
+        select coalesce(json_agg(d order by d.day), '[]') from (
+          select (date_completed at time zone p_tz)::date as day, round(sum(revenue), 2) as revenue, round(sum(cost), 2) as cost
+          from rev group by 1
+        ) d
+      ),
+      'by_product', (
+        select coalesce(json_agg(p order by p.profit desc), '[]') from (
+          select item_id, name, category, sum(quantity) as quantity, round(sum(revenue), 2) as revenue,
+                 round(sum(cost), 2) as cost, round(sum(revenue - cost), 2) as profit
+          from rev group by item_id, name, category
+        ) p
+      ),
+      'by_category', (
+        select coalesce(json_agg(c order by c.revenue desc), '[]') from (
+          select coalesce(category, '') as category, sum(quantity) as quantity, round(sum(revenue), 2) as revenue, round(sum(cost), 2) as cost
+          from rev group by 1
+        ) c
+      ),
+      'slow_movers', (
+        select coalesce(json_agg(x), '[]') from (
+          select i.id, i.name, i.unit, i.current_stock, round(i.current_stock * i.price_buy, 2) as value, last.last_sold
+          from items i
+          left join lateral (
+            select max(o.date_completed) as last_sold from order_item oi join orders o on o.id = oi.order_id
+            where oi.item_id = i.id and o.status = 'COMPLETED'
+          ) last on true
+          where i.business_id = v_biz and i.current_stock > 0
+            and (last.last_sold is null or last.last_sold < now() - make_interval(days => p_slow_days))
+          order by i.current_stock * i.price_buy desc
+          limit 100
+        ) x
+      )
+    )
+  );
+end;
 $$;
 
 -- Closes a day: saves its numbers and the cash count (closing again replaces
@@ -1662,7 +1765,7 @@ grant usage, select on all sequences in schema public to authenticated;
 -- Businesses can edit their own details, but never their trial or payment dates.
 revoke insert, update, delete on public.businesses from authenticated;
 grant update (name, slug, address, contact, logo_url, receipt_footer, low_stock_threshold,
-  business_type, modules, options, custom_fields, receipt_note, vat_registered) on public.businesses to authenticated;
+  business_type, modules, options, custom_fields, receipt_note, vat_registered, digest) on public.businesses to authenticated;
 revoke insert, update, delete on public.members from authenticated;
 revoke update, delete on public.payment_requests from authenticated;
 
@@ -1777,6 +1880,9 @@ revoke execute on function public.login_locked(text[]), public.login_failed(text
   from public, anon, authenticated;
 grant execute on function public.login_locked(text[]), public.login_failed(text[], int[], int), public.login_succeeded(text)
   to service_role;
+
+-- The daily digest asks for each business's profit report as the server.
+grant execute on function public.profit_report(timestamptz, timestamptz, text, integer, uuid) to service_role;
 
 -- So is the record of emails sent.
 alter table public.email_log enable row level security;

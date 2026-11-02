@@ -222,3 +222,63 @@
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
 }
+
+/* ---- the fine print: Terms and Privacy on receipt paper ---- */
+.lp-legal {
+  counter-reset: lp-section;
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+.lp-legal h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 7vw, 3.75rem);
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+.lp-legal .lp-legal-meta {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  margin-top: 0.75rem;
+}
+.lp-legal .lp-legal-summary {
+  margin: 2rem 0 0;
+  padding: 1rem 1.25rem;
+  border: 1px dashed color-mix(in srgb, var(--ink) 35%, transparent);
+  border-radius: 0.5rem;
+}
+.lp-legal h2 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  margin: 2.5rem 0 0.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.lp-legal h2::before {
+  counter-increment: lp-section;
+  content: counter(lp-section, decimal-leading-zero);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  margin-right: 0.6rem;
+  vertical-align: 0.25em;
+}
+.lp-legal p,
+.lp-legal li {
+  color: var(--ink);
+  margin: 0 0 0.85rem;
+}
+.lp-legal ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0 0 0.85rem;
+}
+.lp-legal a {
+  text-decoration: underline;
+}
+.lp-legal strong {
+  font-weight: 700;
+}

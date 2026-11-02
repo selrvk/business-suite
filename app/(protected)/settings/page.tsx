@@ -1,5 +1,6 @@
 import { headers } from "next/headers"
-import { Blocks, Building2, Link2, Shield, User } from "lucide-react"
+import { Blocks, Building2, HardDriveDownload, Link2, Shield, User } from "lucide-react"
+import { DownloadAllData } from "@/components/download-all-data"
 import { PageHeader } from "@/components/page-header"
 import { requireUser } from "@/lib/auth"
 import { MODULE_INFO, config } from "@/lib/config"
@@ -82,6 +83,22 @@ export default async function SettingsPage() {
           </section>
         )}
 
+        {isAdmin && (
+          <section className="card">
+            <div className="card-header">
+              <HardDriveDownload size={15} className="text-brand" />
+              <h2 className="display text-xl text-white">Your data</h2>
+            </div>
+            <div className="card-body flex flex-col gap-3">
+              <p className="text-sm muted">
+                Everything you&apos;ve recorded (products, sales, customers, stock log, attendance and more) as one Excel file. It&apos;s
+                yours to keep, and you can download it any time, even after you stop paying.
+              </p>
+              <DownloadAllData businessName={business.name} slug={business.slug} />
+            </div>
+          </section>
+        )}
+
         <section className="card">
           <div className="card-header">
             <User size={15} className="muted" />
@@ -96,7 +113,7 @@ export default async function SettingsPage() {
           </div>
         </section>
 
-{!isAdmin && (
+        {!isAdmin && (
           <section className="card">
             <div className="card-header">
               <Blocks size={15} className="muted" />

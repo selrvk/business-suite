@@ -25,6 +25,7 @@ export type BusinessInput = {
   receipt_note: string
   low_stock_threshold: number
   vat_registered: boolean
+  digest: "off" | "daily" | "weekly"
 }
 
 export async function updateBusiness(input: BusinessInput): Promise<ActionResult> {
@@ -37,6 +38,7 @@ export async function updateBusiness(input: BusinessInput): Promise<ActionResult
   const slug = input.slug.trim().toLowerCase()
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) || slug.length < 2 || slug.length > 40)
     return { ok: false, error: "Staff link: 2–40 lowercase letters, numbers and single dashes, e.g. santos-trading." }
+  if (!["off", "daily", "weekly"].includes(input.digest)) return { ok: false, error: "Pick how often to get the summary email." }
 
   const { supabase, business } = g.session
   const { error } = await supabase
@@ -50,10 +52,12 @@ export async function updateBusiness(input: BusinessInput): Promise<ActionResult
       receipt_note: input.receipt_note.trim().slice(0, 200) || null,
       vat_registered: input.vat_registered === true,
       low_stock_threshold: threshold,
+      digest: input.digest,
     })
     .eq("id", business.id)
   if (error) return { ok: false, error: dbMessage(error) }
-  const changed = (["name", "slug", "low_stock_threshold", "vat_registered"] as const).filter(k => String(business[k]) !== String(k === "name" ? name : k === "slug" ? slug : k === "low_stock_threshold" ? threshold : input.vat_registered === true))
+  const next = { name, slug, low_stock_threshold: threshold, vat_registered: input.vat_registered === true, digest: input.digest }
+  const changed = (Object.keys(next) as (keyof typeof next)[]).filter(k => String(business[k] ?? "weekly") !== String(next[k]))
   await logActivity(g.session, "business_changed", name, changed.length ? { changed } : {})
   refresh()
   return { ok: true, data: null }

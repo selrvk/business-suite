@@ -53,15 +53,15 @@ export function DateRange({
           </Link>
         ))}
       </div>
-      <form className="flex items-end gap-2" action={path}>
+      <form className="flex flex-wrap items-end gap-2" action={path}>
         {keep.map(([k, v]) => (
           <input key={k} type="hidden" name={k} value={v} />
         ))}
-        <label>
+        <label className="max-sm:flex-1 max-sm:min-w-0">
           <span className="label">From</span>
           <input className="input" type="date" name="from" defaultValue={from} />
         </label>
-        <label>
+        <label className="max-sm:flex-1 max-sm:min-w-0">
           <span className="label">To</span>
           <input className="input" type="date" name="to" defaultValue={to} />
         </label>

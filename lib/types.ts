@@ -19,6 +19,8 @@ export type Business = {
   custom_fields: unknown
   receipt_note: string | null
   vat_registered: boolean
+  /** How often owners get the summary email. */
+  digest?: "off" | "daily" | "weekly"
 }
 
 export type Role = "owner" | "admin" | "staff"

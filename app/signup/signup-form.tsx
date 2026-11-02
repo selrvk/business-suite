@@ -122,6 +122,17 @@ export function SignUpForm() {
         <Rocket size={16} />
         {loading ? "Setting up your suite…" : `Create ${name.trim() || "my business suite"}`}
       </button>
+      <p className="text-xs faint text-center">
+        By creating your suite you agree to the{" "}
+        <Link href="/terms" target="_blank" className="underline decoration-dotted">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" target="_blank" className="underline decoration-dotted">
+          Privacy Policy
+        </Link>
+        .
+      </p>
       <button type="button" className="btn btn-ghost btn-block" onClick={() => setStep(1)} disabled={loading}>
         <ArrowLeft size={14} /> Back to your business
       </button>

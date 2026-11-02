@@ -8,7 +8,7 @@ import { formatDate } from "@/lib/format"
 import { shrinkImage } from "@/lib/image"
 import type { Business, Role } from "@/lib/types"
 import { ALL_PERMISSIONS, PERMISSION_INFO, type Permission } from "@/lib/permissions"
-import { addUser, changePassword, removeLogo, removeUser, resetPassword, setAdmin, setPermissions, updateBusiness, uploadLogo } from "./actions"
+import { addUser, changePassword, removeLogo, removeUser, resetPassword, setAdmin, setPermissions, updateBusiness, uploadLogo, type BusinessInput } from "./actions"
 
 function useStatus() {
   const [busy, setBusy] = useState(false)
@@ -39,6 +39,7 @@ export function BusinessForm({ business }: { business: Business }) {
       vat_registered: form.get("vat_registered") === "on",
       low_stock_threshold: Number(form.get("low_stock_threshold")),
       slug: String(form.get("slug")),
+      digest: String(form.get("digest")) as BusinessInput["digest"],
     })
     setBusy(false)
     setStatus(result.ok ? { ok: true, text: "Saved." } : { ok: false, text: result.error })
@@ -91,11 +92,22 @@ export function BusinessForm({ business }: { business: Business }) {
             </span>
           </span>
         </label>
-        <label className="max-w-xs">
-          <span className="label">Low-stock level</span>
-          <input className="input" name="low_stock_threshold" type="number" min={0} defaultValue={business.low_stock_threshold} required />
-          <span className="hint">Products at or below this count are flagged.</span>
-        </label>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label>
+            <span className="label">Low-stock level</span>
+            <input className="input" name="low_stock_threshold" type="number" min={0} defaultValue={business.low_stock_threshold} required />
+            <span className="hint">Products at or below this count are flagged.</span>
+          </label>
+          <label>
+            <span className="label">Summary email</span>
+            <select className="input" name="digest" defaultValue={business.digest ?? "weekly"}>
+              <option value="weekly">Every Monday morning</option>
+              <option value="daily">Every morning</option>
+              <option value="off">Off</option>
+            </select>
+            <span className="hint">Sales, profit, low stock and who owes you, sent to the owner&apos;s email.</span>
+          </label>
+        </div>
         <div>
           <button className="btn btn-primary" disabled={busy}>
             {busy ? "Saving…" : "Save business details"}

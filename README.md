@@ -8,7 +8,7 @@ get a 14-day free trial, and pay to keep going.
 | Module | What it does |
 | --- | --- |
 | **Inventory** | Products with barcodes, scan to find, **Quick Scan** (every scan adds or removes stock), **Stock In** for deliveries, corrections, a full **Stock Log**, a **Reorder List** grouped by supplier, Excel export, **Import** from Excel/CSV (with a preview of every change), printable barcode labels. Optional: **suppliers**, **categories**, **shelf locations**, **expiry dates** per delivery (sold soonest-first, with warnings), and up to 5 custom product fields. |
-| **Sales & POS** | Checkout where you scan items into the cart, with cash and change, GCash/Maya/card/bank with reference numbers, discounts (including Senior Citizen/PWD 20%, VAT-exempt for VAT-registered businesses), receipts for 80mm thermal printers, pending orders, voids, sales history, **customers and credit ("utang")** with limits and payments, and an **End of Day** cash count. |
+| **Sales & POS** | Checkout where you scan items into the cart, with cash and change, GCash/Maya/card/bank with reference numbers, discounts (including Senior Citizen/PWD 20%, VAT-exempt for VAT-registered businesses), receipts for 80mm thermal printers, pending orders, voids, sales history, **customers and credit ("utang")** with limits and payments, an **End of Day** cash count, and a **Profit Report** (profit by day, best sellers, low margins, categories and slow movers). |
 | **Attendance** | Printable ID badges, a **Time Clock** kiosk (scan in, scan out), today's board, **Timesheets** with payroll cut-offs, and fixes for missed punches. |
 | **Fleet** | Vehicle tags, trips with odometer readings, fuel logs, km per month, km per liter and cost per km. |
 
@@ -23,6 +23,12 @@ get a 14-day free trial, and pay to keep going.
   payment details. The owner pays you, e.g. by GCash, and sends the reference number.
 - **You approve payments** at `/platform`. Each approval adds a month or a year, on top of any time still left. You can also
   extend trials and see every business there.
+- **Your data**: owners can download every record as one Excel file from Settings or Billing, even after access ends.
+  Nothing is deleted when a business stops paying.
+- **Install as an app**: on phones and computers, **Install app** in the menu (or Add to Home Screen on iPhone) opens the
+  suite in its own window.
+- **Terms of Service** (`/terms`) and **Privacy Policy** (`/privacy`) name the provider from `NEXT_PUBLIC_PROVIDER_NAME`.
+  Have a lawyer review them before you rely on them.
 
 Payments are manual for now. Stripe doesn't accept Philippine businesses; PayMongo (GCash, Maya, cards) is the natural next
 step.
@@ -62,8 +68,9 @@ where user_id = (select id from auth.users where email = 'you@example.com');
 With email set up, the app sends:
 
 - **Owners:** a link to confirm their email when they sign up (they confirm before their first login), password reset links
-  (`/forgot-password`), payment approved/rejected notices, and a reminder 3 days before their trial or paid time ends and
-  on the day it ends.
+  (`/forgot-password`), payment approved/rejected notices, a reminder 3 days before their trial or paid time ends and
+  on the day it ends, and a **summary** of sales, profit, low stock, expiry and credit: every Monday by default, or every
+  morning, or off (Settings → Business).
 - **You:** a notice for every new sign-up and every payment to check.
 
 Without it, sign-ups log in straight away and owners who forget their password have to ask you. Staff logins have no
@@ -78,8 +85,8 @@ To set it up with [Resend](https://resend.com) (free for 3,000 emails a month):
 3. Set these environment variables (on Vercel: Settings → Environment Variables), then redeploy:
    - `RESEND_API_KEY`: the key from step 2
    - `EMAIL_FROM`: e.g. `Business Suite <no-reply@mail.yourdomain.com>` (must use the verified domain)
-   - `CRON_SECRET`: any long random text (`openssl rand -hex 32`); Vercel uses it to run the daily reminders
-     ([`vercel.json`](vercel.json))
+   - `CRON_SECRET`: any long random text (`openssl rand -hex 32`); Vercel uses it to run the daily reminders and
+     summaries at 9 AM Philippine time ([`vercel.json`](vercel.json))
 4. Test it: on `/forgot-password`, enter your own email.
 
 Replies to these emails go to `NEXT_PUBLIC_CONTACT_EMAIL`.
@@ -124,4 +131,5 @@ npm run dev
 | `app/(protected)/` | The suite (side menu) |
 | `app/(standalone)/` | Time clock kiosk and print pages |
 | `app/billing`, `app/platform` | Paywall and your admin page |
+| `app/(legal)` | Terms of Service and Privacy Policy |
 | `supabase/schema.sql` | Tables, permissions, and the functions that keep stock and sales consistent |

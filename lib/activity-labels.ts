@@ -23,4 +23,5 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   permissions_changed: "Changed someone's permissions",
   business_changed: "Changed business details",
   features_changed: "Changed features",
+  data_exported: "Downloaded all the data",
 }

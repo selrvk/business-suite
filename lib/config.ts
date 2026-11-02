@@ -43,6 +43,8 @@ export const config = {
     /** Optional. Leave NEXT_PUBLIC_PRICE_YEARLY unset to offer monthly only. */
     yearly: Number(process.env.NEXT_PUBLIC_PRICE_YEARLY) || null,
   },
+  /** Who runs the service, named in the Terms of Service and Privacy Policy. */
+  provider: process.env.NEXT_PUBLIC_PROVIDER_NAME || "Archtech",
   /** Shown on the website for questions. */
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "archtechbtg@gmail.com",
   trialDays: 14,
