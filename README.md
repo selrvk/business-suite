@@ -9,7 +9,7 @@ get a 14-day free trial, and pay to keep going.
 | --- | --- |
 | **Inventory** | Products with barcodes, scan to find, **Quick Scan** (every scan adds or removes stock), **Stock In** for deliveries, corrections, a full **Stock Log**, a **Reorder List** grouped by supplier, Excel export, **Import** from Excel/CSV (with a preview of every change), printable barcode labels. Optional: **suppliers**, **categories**, **shelf locations**, **expiry dates** per delivery (sold soonest-first, with warnings), and up to 5 custom product fields. |
 | **Sales & POS** | Checkout where you scan items into the cart, with cash and change, GCash/Maya/card/bank with reference numbers, discounts (including Senior Citizen/PWD, worked out per item: 20% on medicine and meals, VAT-exempt for VAT-registered businesses; 5% on basic goods, up to ₱125 a week per ID), receipts for 80mm thermal printers, pending orders, voids, sales history, **customers and credit ("utang")** with limits and payments, an **End of Day** cash count, and a **Profit Report** (profit by day, best sellers, low margins, categories and slow movers). |
-| **Attendance** | Printable ID badges, a **Time Clock** kiosk (scan in, scan out), today's board, **Timesheets** with payroll cut-offs, and fixes for missed punches. |
+| **Attendance** | Printable ID badges, a **Time Clock** kiosk (scan in, scan out), today's board, **Timesheets** with payroll cut-offs, and fixes for missed punches. **Import from a scanner**: upload the attendance file a fingerprint or face scanner saves (ZKTeco attlog.dat, or an Excel/CSV report) and its punches become shifts. |
 | **Fleet** | Vehicle tags, trips with odometer readings, fuel logs, km per month, km per liter and cost per km. |
 
 ## How it works

@@ -1,10 +1,12 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { logActivity } from "@/lib/activity"
 import { guard } from "@/lib/auth"
 import { dbMessage } from "@/lib/db"
 import { fromDateTimeLocal } from "@/lib/format"
-import type { ActionResult, ClockResult } from "@/lib/types"
+import { MAX_PUNCHES } from "@/lib/scanner-import"
+import type { ActionResult, ClockResult, PunchImportResult } from "@/lib/types"
 
 /** Badge scan at the time clock: clocks in, or out if already in. */
 export async function clockByCode(code: string): Promise<ActionResult<ClockResult>> {
@@ -54,4 +56,38 @@ export async function deleteAttendance(id: number): Promise<ActionResult> {
   if (error) return { ok: false, error: dbMessage(error) }
   revalidatePath("/attendance", "layout")
   return { ok: true, data: null }
+}
+
+/**
+ * Scanner upload: punches grouped by the number on the scanner, as unix seconds
+ * ([{ code, times }]). The database matches the numbers to badge codes, keeps
+ * each punch once and pairs new ones into shifts (import_punches()).
+ */
+export async function importPunches(input: unknown, fileName: string): Promise<ActionResult<PunchImportResult>> {
+  const g = await guard({ admin: true })
+  if (!g.ok) return g
+  if (!Array.isArray(input) || input.length === 0) return { ok: false, error: "There's nothing to import." }
+
+  const unreadable = { ok: false as const, error: "Some punches couldn't be read. Reload the page and try again." }
+  const earliest = Date.UTC(2000, 0, 1) / 1000
+  const latest = Date.now() / 1000 + 366 * 86400
+  const groups: { code: string; times: number[] }[] = []
+  let total = 0
+  for (const group of input) {
+    if (!group || typeof group !== "object") return unreadable
+    const { code, times } = group as { code?: unknown; times?: unknown }
+    if (typeof code !== "string" || !code.trim() || code.trim().length > 40 || !Array.isArray(times)) return unreadable
+    if (!times.every(t => typeof t === "number" && Number.isInteger(t) && t >= earliest && t <= latest)) return unreadable
+    total += times.length
+    groups.push({ code: code.trim(), times })
+  }
+  if (total > MAX_PUNCHES) return { ok: false, error: `That's over ${MAX_PUNCHES.toLocaleString()} punches. Import a shorter date range.` }
+
+  const { data, error } = await g.session.supabase.rpc("import_punches", { p_punches: groups })
+  if (error) return { ok: false, error: dbMessage(error) }
+  const result = data as PunchImportResult
+  await logActivity(g.session, "attendance_imported", String(fileName ?? "").slice(0, 120) || null, { shifts: result.shifts, punches: result.new })
+  revalidatePath("/attendance", "layout")
+  revalidatePath("/dashboard")
+  return { ok: true, data: result }
 }

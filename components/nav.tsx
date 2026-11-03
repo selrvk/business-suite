@@ -3,93 +3,12 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import {
-  Building2,
-  Contact,
-  CalendarClock,
-  ClipboardList,
-  CreditCard,
-  History,
-  Hourglass,
-  Lock,
-  LayoutDashboard,
-  Menu,
-  Package,
-  PackagePlus,
-  Receipt,
-  Route,
-  ScanBarcode,
-  ScrollText,
-  Settings,
-  ShieldCheck,
-  ShoppingBasket,
-  Sheet,
-  Timer,
-  TrendingUp,
-  Truck,
-  Users,
-  X,
-  Zap,
-  type LucideIcon,
-} from "lucide-react"
+import { CreditCard, Menu, ScrollText, Settings, ShieldCheck, X, type LucideIcon } from "lucide-react"
 import { config } from "@/lib/config"
 import { BrandMark } from "./brand-mark"
 import { InstallAppButton } from "./install-app-button"
 import LogoutButton from "./logout-button"
-
-type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; show?: boolean }
-type NavGroup = { label: string; items: NavItem[] }
-
-/** The menu for a business, from the modules and product options it uses. */
-function navGroups(modules: string[], options: string[], permissions: string[]): NavGroup[] {
-  const has = (m: string) => modules.includes(m)
-  const inventory = has("inventory")
-  const people = has("attendance")
-  const fleet = has("fleet")
-  const groups: NavGroup[] = [
-    { label: "Overview", items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
-    {
-      label: "Sales",
-      items: [
-        { href: "/pos", label: "Point of Sale", icon: ScanBarcode, show: has("sales") },
-        { href: "/orders", label: "Pending Orders", icon: ClipboardList, show: has("sales") },
-        { href: "/sales", label: "Sales History", icon: Receipt, exact: true, show: has("sales") },
-        { href: "/reports", label: "Profit Report", icon: TrendingUp, show: has("sales") && permissions.includes("see_costs") },
-        { href: "/customers", label: "Customers", icon: Contact, show: has("sales") },
-        { href: "/sales/close", label: "End of Day", icon: Lock, show: has("sales") },
-      ],
-    },
-    {
-      label: "Inventory",
-      items: [
-        { href: "/inventory", label: "Products", icon: Package, exact: true, show: inventory },
-        { href: "/inventory/quick-scan", label: "Quick Scan", icon: Zap, show: inventory && permissions.includes("adjust_stock") },
-        { href: "/inventory/stock-in", label: "Stock In", icon: PackagePlus, show: inventory },
-        { href: "/inventory/reorder", label: "Reorder List", icon: ShoppingBasket, show: inventory },
-        { href: "/inventory/expiry", label: "Expiry Dates", icon: Hourglass, show: inventory && options.includes("expiry") },
-        { href: "/inventory/suppliers", label: "Suppliers", icon: Building2, show: inventory && options.includes("suppliers") },
-        { href: "/inventory/movements", label: "Stock Log", icon: History, show: inventory },
-      ],
-    },
-    {
-      label: "People",
-      items: [
-        { href: "/attendance", label: "Attendance", icon: CalendarClock, exact: true, show: people },
-        { href: "/time-clock", label: "Time Clock", icon: Timer, show: people },
-        { href: "/attendance/records", label: "Timesheets", icon: Sheet, show: people },
-        { href: "/employees", label: "Employees", icon: Users, show: people || fleet },
-      ],
-    },
-    {
-      label: "Fleet",
-      items: [
-        { href: "/fleet", label: "Vehicles", icon: Truck, exact: true, show: fleet },
-        { href: "/fleet/logs", label: "Trip & Fuel Logs", icon: Route, show: fleet },
-      ],
-    },
-  ]
-  return groups.map(g => ({ ...g, items: g.items.filter(i => i.show !== false) })).filter(g => g.items.length > 0)
-}
+import { activeSection, menuSections } from "./menu"
 
 export default function Nav({
   businessName,
@@ -110,7 +29,7 @@ export default function Nav({
   options: string[]
   permissions: string[]
 }) {
-  const groups = navGroups(modules, options, permissions)
+  const sections = menuSections(modules, options, permissions)
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [openedAt, setOpenedAt] = useState(pathname)
@@ -121,35 +40,29 @@ export default function Nav({
     setOpenedAt(pathname)
   }
 
-  const isActive = (item: NavItem) =>
-    item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(item.href + "/")
+  const current = activeSection(sections, pathname)
 
   const links = (
-    <nav className="flex flex-col gap-5">
-      {groups.map(group => (
-        <div key={group.label}>
-          <p className="px-5 mb-1.5 text-[0.6rem] font-bold uppercase tracking-[0.2em] faint">{group.label}</p>
-          {group.items.map(item => {
-            const active = isActive(item)
-            const Icon = item.icon
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-2.5 px-5 py-2 text-[0.8rem] font-medium border-l-2 transition-colors"
-                style={{
-                  color: active ? "#fff" : "var(--app-muted)",
-                  background: active ? "var(--brand-soft)" : undefined,
-                  borderLeftColor: active ? "var(--brand)" : "transparent",
-                }}
-              >
-                <Icon size={15} strokeWidth={active ? 2.4 : 2} style={{ color: active ? "var(--brand)" : undefined }} />
-                {item.label}
-              </Link>
-            )
-          })}
-        </div>
-      ))}
+    <nav className="flex flex-col gap-0.5">
+      {sections.map(section => {
+        const active = section === current
+        const Icon = section.icon
+        return (
+          <Link
+            key={section.key}
+            href={section.href}
+            className="flex items-center gap-3 px-5 py-2.5 text-[0.86rem] font-medium border-l-2 transition-colors"
+            style={{
+              color: active ? "#fff" : "var(--app-muted)",
+              background: active ? "var(--brand-soft)" : undefined,
+              borderLeftColor: active ? "var(--brand)" : "transparent",
+            }}
+          >
+            <Icon size={17} strokeWidth={active ? 2.4 : 2} style={{ color: active ? "var(--brand)" : undefined }} />
+            {section.label}
+          </Link>
+        )
+      })}
     </nav>
   )
 

@@ -16,6 +16,7 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   payment_received: "Recorded a customer payment",
   customer_deleted: "Deleted a customer",
   day_closed: "Closed the day",
+  attendance_imported: "Imported attendance from a scanner",
   staff_added: "Added a login",
   staff_removed: "Removed a login",
   password_reset: "Reset a password",

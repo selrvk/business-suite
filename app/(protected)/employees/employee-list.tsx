@@ -156,7 +156,10 @@ function EmployeeForm({ employee, onClose }: { employee: Employee | null; onClos
             <RefreshCw size={14} />
           </button>
         </div>
-        <p className="hint">Already have ID cards with barcodes? Click the box and scan theirs instead.</p>
+        <p className="hint">
+          Already have ID cards with barcodes? Click the box and scan theirs instead. Using a fingerprint or face scanner? Enter their number on
+          the scanner.
+        </p>
       </div>
       <div className="modal-footer">
         <button type="button" className="btn btn-secondary" onClick={onClose}>

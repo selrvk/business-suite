@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Sheet, Timer, Users } from "lucide-react"
+import { FileClock, Sheet, Timer, Users } from "lucide-react"
 import { DbError } from "@/components/db-error"
 import { Empty, PageHeader, Stat } from "@/components/page-header"
 import { requireModule, requireUser } from "@/lib/auth"
@@ -17,7 +17,7 @@ export default async function AttendancePage() {
   const dayStartDate = startOfDay(today)
   const dayStart = dayStartDate.toISOString()
 
-  const [, employeesResult, recordsResult] = await Promise.all([
+  const [{ isAdmin }, employeesResult, recordsResult] = await Promise.all([
     requireUser(),
     supabase.from("employees").select("id, name, code, position, phone, active").eq("active", true).order("name"),
     supabase
@@ -56,6 +56,11 @@ export default async function AttendancePage() {
   return (
     <>
       <PageHeader eyebrow="People" title="Attendance" subtitle={formatLongDate(new Date())}>
+        {isAdmin && (
+          <Link href="/attendance/import" className="btn btn-secondary">
+            <FileClock size={14} /> Import from scanner
+          </Link>
+        )}
         <Link href="/attendance/records" className="btn btn-secondary">
           <Sheet size={14} /> Timesheets
         </Link>

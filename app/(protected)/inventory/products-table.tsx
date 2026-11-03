@@ -334,7 +334,7 @@ export function ProductsTable({
             ))}
           </tbody>
         </table>
-        {visible.length === 0 && <p className="empty">{items.length ? "No products match." : "No products yet. Add one or scan a barcode."}</p>}
+        {visible.length === 0 && (items.length ? <p className="empty">No products match.</p> : <NoProducts isAdmin={isAdmin} />)}
       </div>
 
       {/* Mobile list */}
@@ -352,7 +352,7 @@ export function ProductsTable({
             {actions(i)}
           </div>
         ))}
-        {visible.length === 0 && <p className="empty">{items.length ? "No products match." : "No products yet."}</p>}
+        {visible.length === 0 && (items.length ? <p className="empty">No products match.</p> : <NoProducts isAdmin={isAdmin} />)}
       </div>
 
       {pageCount > 1 && (
@@ -408,5 +408,27 @@ export function AddProductButton() {
       </button>
       <ProductModal open={open} item={null} onClose={() => setOpen(false)} />
     </>
+  )
+}
+
+/** What a new business sees before it has any products. */
+function NoProducts({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <div className="empty">
+      <p className="empty-title">No products yet</p>
+      <p className="text-sm muted max-w-md">
+        Add them one at a time with Add product, or scan a barcode to start one.
+        {isAdmin && (
+          <>
+            {" "}
+            Already have a list?{" "}
+            <Link href="/inventory/import" className="underline">
+              Import it from Excel
+            </Link>
+            .
+          </>
+        )}
+      </p>
+    </div>
   )
 }

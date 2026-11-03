@@ -33,7 +33,10 @@ export function Timesheet({
         <h2 className="section-title">Summary · {period}</h2>
         <div className="table-wrap">
           {summary.length === 0 ? (
-            <Empty title="No attendance in this period" />
+            <Empty title="No attendance in this period">
+              Staff clock in at the Time Clock by scanning their badge. Using a fingerprint or face scanner? Import its file from the
+              Attendance page.
+            </Empty>
           ) : (
             <table className="table">
               <thead>

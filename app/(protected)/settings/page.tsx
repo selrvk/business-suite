@@ -1,6 +1,7 @@
 import { headers } from "next/headers"
-import { BadgePercent, Blocks, Building2, HardDriveDownload, Link2, Shield, User } from "lucide-react"
+import { BadgePercent, Blocks, Building2, HardDriveDownload, Link2, ListChecks, Shield, User } from "lucide-react"
 import { DownloadAllData } from "@/components/download-all-data"
+import { ShowSetupButton } from "@/components/setup-buttons"
 import { PageHeader } from "@/components/page-header"
 import { requireUser } from "@/lib/auth"
 import { MODULE_INFO, config } from "@/lib/config"
@@ -61,7 +62,7 @@ export default async function SettingsPage() {
         </section>
 
         {isAdmin && (
-          <section className="card">
+          <section className="card scroll-mt-6" id="business">
             <div className="card-header">
               <Building2 size={15} className="text-brand" />
               <h2 className="display text-xl text-white">Business</h2>
@@ -104,13 +105,28 @@ export default async function SettingsPage() {
         )}
 
         {isAdmin && (
-          <section className="card">
+          <section className="card scroll-mt-6" id="logins">
             <div className="card-header">
               <Shield size={15} className="text-brand" />
               <h2 className="display text-xl text-white">Logins</h2>
             </div>
             <div className="card-body">
               <Users users={(users ?? []) as UserRow[]} currentUserId={userId} slug={business.slug} staffLink={staffLink} />
+            </div>
+          </section>
+        )}
+
+        {isAdmin && business.setup_hidden && (
+          <section className="card">
+            <div className="card-header">
+              <ListChecks size={15} className="text-brand" />
+              <h2 className="display text-xl text-white">Setup guide</h2>
+            </div>
+            <div className="card-body flex flex-col gap-3">
+              <p className="text-sm muted">
+                The checklist that walks you through adding products, a test sale, staff and logins. It ticks itself off as you go.
+              </p>
+              <ShowSetupButton />
             </div>
           </section>
         )}

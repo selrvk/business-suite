@@ -25,6 +25,8 @@ export type Business = {
   senior_default?: number
   /** BMBE-registered or a cooperative: doesn't give the 5% on basic goods. */
   senior_basic_exempt?: boolean
+  /** The owner hid the setup checklist on the dashboard. */
+  setup_hidden?: boolean
 }
 
 export type Role = "owner" | "admin" | "staff"
@@ -138,6 +140,22 @@ export type AttendanceRecord = {
   clock_in: string
   clock_out: string | null
   note: string | null
+}
+
+/** What import_punches() did with a scanner upload. */
+export type PunchImportResult = {
+  read: number
+  new: number
+  already: number
+  future: number
+  unmatched: { code: string; punches: number }[]
+  doubles: number
+  covered: number
+  shifts: number
+  closed: number
+  open: number
+  missed: number
+  overlaps: number
 }
 
 export type ClockResult = {

@@ -84,8 +84,8 @@ function offsetMs(date: Date) {
 }
 
 /** Wall-clock time in the business time zone → the real instant. */
-function zonedToDate(year: number, month: number, day: number, hour = 0, minute = 0) {
-  const guess = Date.UTC(year, month - 1, day, hour, minute)
+export function zonedToDate(year: number, month: number, day: number, hour = 0, minute = 0, second = 0) {
+  const guess = Date.UTC(year, month - 1, day, hour, minute, second)
   const first = guess - offsetMs(new Date(guess))
   return new Date(guess - offsetMs(new Date(first)))
 }

@@ -316,3 +316,13 @@ export async function setPermissions(userId: string, permissions: string[]): Pro
   refresh()
   return { ok: true, data: null }
 }
+
+/** Hides the setup checklist on the dashboard, or brings it back. */
+export async function setSetupHidden(hidden: boolean): Promise<ActionResult> {
+  const g = await guard({ admin: true, allowExpired: true })
+  if (!g.ok) return g
+  const { error } = await g.session.supabase.from("businesses").update({ setup_hidden: hidden === true }).eq("id", g.session.business.id)
+  if (error) return { ok: false, error: dbMessage(error) }
+  refresh()
+  return { ok: true, data: null }
+}

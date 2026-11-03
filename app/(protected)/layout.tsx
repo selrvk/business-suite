@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Nav from "@/components/nav"
+import { SectionTabs } from "@/components/section-tabs"
 import { access, getSession, isPlatformLogin, requireActive } from "@/lib/auth"
 import { BusinessFeaturesProvider } from "@/components/business-features"
 import { businessModules, customFields, type ProductOption } from "@/lib/features"
@@ -43,6 +44,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         )}
         <main className="px-4 py-6 sm:px-6 md:px-10 md:py-9">
+          <SectionTabs modules={businessModules(session.business)} options={session.business.options ?? []} permissions={session.permissions} />
           <BusinessFeaturesProvider
             value={{
               options: (session.business.options ?? []) as ProductOption[],

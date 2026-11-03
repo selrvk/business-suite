@@ -23,7 +23,7 @@ const SHOWN = 24
 
 export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]; lowStock: number; customers?: PosCustomer[] }) {
   const can = useCan()
-  const { vatRegistered, seniorDefault, seniorBasicExempt } = useBusinessFeatures()
+  const { vatRegistered, seniorDefault, seniorBasicExempt, isAdmin } = useBusinessFeatures()
   const [lineDiscounts, setLineDiscounts] = useState<Record<number, LineDiscount>>({})
   const [editingLine, setEditingLine] = useState<number | null>(null)
   const [discountMode, setDiscountMode] = useState<"none" | "senior" | "pwd" | "other">("none")
@@ -242,6 +242,28 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
           </div>
         )}
 
+        {items.length === 0 && (
+          <div className="card card-body flex flex-col items-start gap-3">
+            <p className="text-white font-semibold">Add your products first</p>
+            <p className="text-sm muted">
+              The Point of Sale sells from your product list.{" "}
+              {can("edit_products") ? "Add them one at a time, or import them all from an Excel file." : "Ask the owner to add them."}
+            </p>
+            {can("edit_products") && (
+              <div className="flex flex-wrap gap-2">
+                <Link href="/inventory" className="btn btn-primary">
+                  Add products
+                </Link>
+                {isAdmin && (
+                  <Link href="/inventory/import" className="btn btn-secondary">
+                    Import from Excel
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-4 gap-2">
           {results.map(item => {
             const qty = cart.find(l => l.id === item.id)?.qty
@@ -271,7 +293,7 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
             )
           })}
         </div>
-        {results.length === 0 && <p className="text-sm faint py-6 text-center">No products match “{query}”.</p>}
+        {results.length === 0 && items.length > 0 && query.trim() && <p className="text-sm faint py-6 text-center">No products match “{query}”.</p>}
         {!query && items.length > SHOWN && (
           <p className="text-xs faint text-center">Showing {SHOWN} of {items.length} products. Scan or search to find the rest.</p>
         )}

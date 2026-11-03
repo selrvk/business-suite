@@ -15,6 +15,7 @@ export const EXPORT_TABLES = [
   { table: "day_closings", sheet: "End of day", about: "Daily closings and cash counts" },
   { table: "employees", sheet: "Employees", about: "Employees and badges" },
   { table: "attendance", sheet: "Attendance", select: "*, employees(name)", about: "Time clock records" },
+  { table: "attendance_punches", sheet: "Scanner punches", select: "*, employees(name)", about: "Punches imported from a fingerprint or face scanner" },
   { table: "vehicles", sheet: "Vehicles", about: "Vehicles" },
   { table: "trips", sheet: "Trips", select: "*, vehicles(name), employees(name)", about: "Trips and mileage" },
   { table: "fuel_logs", sheet: "Fuel", select: "*, vehicles(name)", about: "Fuel purchases" },

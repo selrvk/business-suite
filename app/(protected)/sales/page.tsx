@@ -120,7 +120,13 @@ export default async function SalesPage({
 
       <div className="table-wrap">
         {orders.length === 0 ? (
-          <Empty title="No sales in this period" icon={<Receipt size={30} />} />
+          <Empty title="No sales in this period" icon={<Receipt size={30} />}>
+            Sales made at the{" "}
+            <Link href="/pos" className="underline">
+              Point of Sale
+            </Link>{" "}
+            show up here.
+          </Empty>
         ) : (
           <table className="table">
             <thead>
