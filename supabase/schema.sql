@@ -66,6 +66,8 @@ begin
     update public.businesses set setup_hidden = true;
   end if;
 end $$;
+-- Checklist steps the owner skipped (not needed for their business), by key.
+alter table public.businesses add column if not exists setup_skipped text[] not null default '{}';
 
 -- Who can log in to which business. One business per login.
 create table if not exists public.members (
@@ -2049,7 +2051,7 @@ grant usage, select on all sequences in schema public to authenticated;
 revoke insert, update, delete on public.businesses from authenticated;
 grant update (name, slug, address, contact, logo_url, receipt_footer, low_stock_threshold,
   business_type, modules, options, custom_fields, receipt_note, vat_registered, digest,
-  senior_default, senior_basic_exempt, setup_hidden) on public.businesses to authenticated;
+  senior_default, senior_basic_exempt, setup_hidden, setup_skipped) on public.businesses to authenticated;
 revoke insert, update, delete on public.members from authenticated;
 revoke update, delete on public.payment_requests from authenticated;
 

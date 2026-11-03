@@ -27,6 +27,8 @@ export type Business = {
   senior_basic_exempt?: boolean
   /** The owner hid the setup checklist on the dashboard. */
   setup_hidden?: boolean
+  /** Setup checklist steps the owner skipped (see lib/setup.ts). */
+  setup_skipped?: string[]
 }
 
 export type Role = "owner" | "admin" | "staff"

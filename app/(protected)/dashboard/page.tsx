@@ -155,7 +155,9 @@ export default async function DashboardPage() {
       actions: [{ href: "/settings#logins", label: "Add a login" }],
     },
   ]
-  const showSetup = setup && steps.some(s => !s.done)
+  const skipped = new Set(business.setup_skipped ?? [])
+  for (const step of steps) step.skipped = !step.done && skipped.has(step.key)
+  const showSetup = setup && steps.some(s => !s.done && !s.skipped)
   // Nothing recorded yet: the checklist alone, instead of a page of zeros.
   const fresh = showSetup && products === 0 && (anySales.count ?? 0) === 0
 

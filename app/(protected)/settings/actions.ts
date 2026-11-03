@@ -7,6 +7,7 @@ import { dbMessage } from "@/lib/db"
 import { logActivity } from "@/lib/activity"
 import { ALL_PERMISSIONS, CASHIER, PERMISSION_INFO, type Permission } from "@/lib/permissions"
 import { cleanFeatures, type FeaturesInput } from "@/lib/features"
+import { isSetupStep } from "@/lib/setup"
 import { BUSY, loginLockout, passwordIsRight } from "@/lib/login"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 import type { ActionResult } from "@/lib/types"
@@ -322,6 +323,24 @@ export async function setSetupHidden(hidden: boolean): Promise<ActionResult> {
   const g = await guard({ admin: true, allowExpired: true })
   if (!g.ok) return g
   const { error } = await g.session.supabase.from("businesses").update({ setup_hidden: hidden === true }).eq("id", g.session.business.id)
+  if (error) return { ok: false, error: dbMessage(error) }
+  refresh()
+  return { ok: true, data: null }
+}
+
+/** Skips one step of the setup checklist (not needed for this business), or brings it back. */
+export async function skipSetupStep(step: string, skip: boolean): Promise<ActionResult> {
+  const g = await guard({ admin: true, allowExpired: true })
+  if (!g.ok) return g
+  if (!isSetupStep(step)) return { ok: false, error: "That step doesn't exist. Reload the page and try again." }
+  const { supabase, business } = g.session
+  // Read the current list fresh: the cached session may be a few minutes old.
+  const { data, error: readError } = await supabase.from("businesses").select("setup_skipped").eq("id", business.id).single()
+  if (readError) return { ok: false, error: dbMessage(readError) }
+  const skipped = new Set(((data?.setup_skipped ?? []) as string[]).filter(isSetupStep))
+  if (skip) skipped.add(step)
+  else skipped.delete(step)
+  const { error } = await supabase.from("businesses").update({ setup_skipped: [...skipped] }).eq("id", business.id)
   if (error) return { ok: false, error: dbMessage(error) }
   refresh()
   return { ok: true, data: null }
