@@ -26,7 +26,6 @@ export default async function EmployeesPage() {
   return (
     <>
       <PageHeader
-        eyebrow="People"
         title="Employees"
         subtitle={
           mods.includes("attendance")

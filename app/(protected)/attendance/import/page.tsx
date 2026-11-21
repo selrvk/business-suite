@@ -17,7 +17,6 @@ export default async function ScannerImportPage() {
   return (
     <>
       <PageHeader
-        eyebrow="People"
         title="Import from a scanner"
         subtitle="Bring in the punches from a fingerprint or face scanner. You'll see who's in the file before anything is saved."
       >

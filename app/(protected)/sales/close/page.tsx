@@ -25,7 +25,6 @@ export default async function CloseDayPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
-        eyebrow="Sales"
         title="End of Day"
         subtitle="The day's sales and payments, and a count of the cash drawer. Close the day before going home."
       />

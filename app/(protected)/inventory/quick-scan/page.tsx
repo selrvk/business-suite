@@ -13,7 +13,6 @@ export default async function QuickScanPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Inventory"
         title="Quick Scan"
         subtitle={
           <>

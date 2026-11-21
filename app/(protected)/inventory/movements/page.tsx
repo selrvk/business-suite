@@ -71,7 +71,7 @@ export default async function MovementsPage({
 
   return (
     <>
-      <PageHeader eyebrow="Inventory" title="Stock Log" subtitle="Every stock change (sales, deliveries, corrections) and who made it.">
+      <PageHeader title="Stock Log" subtitle="Every stock change (sales, deliveries, corrections) and who made it.">
         <ExportButton
           filename={`stock_log_${from}_to_${to}`}
           sheet="Stock log"

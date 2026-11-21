@@ -80,7 +80,7 @@ export function SalesView({ data }: { data: SalesData }) {
         </Link>
       </PageHeader>
 
-      <div className="flex flex-col gap-3 mb-6 2xl:flex-row 2xl:flex-wrap 2xl:items-end 2xl:justify-between">
+      <div className="flex flex-col gap-3 mb-6 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
         <DateRange path="/sales" from={from} to={to} extra={{ status: status === "all" ? undefined : status }} />
         <div className="segmented self-start" role="group" aria-label="Status">
           {(Object.keys(STATUS_LABELS) as SalesStatus[]).map(key => (

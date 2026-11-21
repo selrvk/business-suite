@@ -31,7 +31,6 @@ export default async function OrdersPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Sales"
         title={
           <span className="flex items-baseline gap-3">
             Pending Orders

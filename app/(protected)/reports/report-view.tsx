@@ -38,7 +38,6 @@ export function ReportView({
   return (
     <>
       <PageHeader
-        eyebrow="Sales"
         title="Profit Report"
         subtitle="What you sold, minus what those goods cost you. Rent, wages and other expenses aren't included."
       >

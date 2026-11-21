@@ -17,7 +17,6 @@ export default async function ActivityPage() {
   return (
     <>
       <PageHeader
-        eyebrow="System"
         title="Activity Log"
         subtitle="Who changed prices, gave discounts, voided sales, corrected stock and more. Only owners and admins see this, and nobody can edit it."
       />

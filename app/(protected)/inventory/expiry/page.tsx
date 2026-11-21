@@ -59,7 +59,6 @@ export default async function ExpiryPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Inventory"
         title="Expiry Dates"
         subtitle="Each delivery's expiry date, soonest first. Sales and stock taken out use the batch that expires first."
       >

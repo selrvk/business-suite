@@ -69,7 +69,7 @@ export default async function TimesheetsPage({
 
   return (
     <>
-      <PageHeader eyebrow="People" title="Timesheets" subtitle="Hours worked per employee, ready for payroll. Admins can fix missed or wrong punches.">
+      <PageHeader title="Timesheets" subtitle="Hours worked per employee, ready for payroll. Admins can fix missed or wrong punches.">
         <ExportButton rows={summaryRows} filename={`timesheet_summary_${from}_to_${to}`} sheet="Summary" label="Export summary" />
         <ExportButton rows={detailRows} filename={`timesheet_detail_${from}_to_${to}`} sheet="Punches" label="Export all punches" />
       </PageHeader>

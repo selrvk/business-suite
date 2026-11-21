@@ -21,7 +21,6 @@ export default async function ReorderPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Inventory"
         title="Reorder List"
         subtitle={`Products at or below their low-stock level${bySupplier ? ", grouped by supplier" : ""}. Adjust the quantities, then copy or print the order.`}
       />

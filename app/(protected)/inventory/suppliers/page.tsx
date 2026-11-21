@@ -24,7 +24,7 @@ export default async function SuppliersPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Inventory" title="Suppliers" subtitle="Who you buy from. Pick a supplier on each product and in Stock In.">
+      <PageHeader title="Suppliers" subtitle="Who you buy from. Pick a supplier on each product and in Stock In.">
         <AddSupplierButton />
       </PageHeader>
       <SupplierList

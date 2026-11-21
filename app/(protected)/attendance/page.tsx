@@ -55,7 +55,7 @@ export default async function AttendancePage() {
 
   return (
     <>
-      <PageHeader eyebrow="People" title="Attendance" subtitle={formatLongDate(new Date())}>
+      <PageHeader title="Attendance" subtitle={formatLongDate(new Date())}>
         {isAdmin && (
           <Link href="/attendance/import" className="btn btn-secondary">
             <FileClock size={14} /> Import from scanner

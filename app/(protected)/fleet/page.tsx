@@ -42,7 +42,7 @@ export default async function FleetPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Fleet" title="Vehicles" subtitle="Scan a vehicle's tag (or tap its card) to start or end a trip and log fuel.">
+      <PageHeader title="Vehicles" subtitle="Scan a vehicle's tag (or tap its card) to start or end a trip and log fuel.">
         <Link href="/fleet/logs" className="btn btn-secondary">
           <Route size={14} /> Trip &amp; fuel logs
         </Link>

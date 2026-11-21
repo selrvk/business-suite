@@ -30,7 +30,6 @@ export default async function ImportProductsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Inventory"
         title="Import products"
         subtitle="Add or update many products at once from an Excel or CSV file. You'll see exactly what will change before anything is saved."
       >

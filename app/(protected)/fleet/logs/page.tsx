@@ -97,7 +97,7 @@ export default async function FleetLogsPage({
 
   return (
     <>
-      <PageHeader eyebrow="Fleet" title="Trip & Fuel Logs">
+      <PageHeader title="Trip & Fuel Logs">
         <ExportButton rows={tripRows} filename={`trips_${from}_to_${to}`} sheet="Trips" label="Export trips" />
         <ExportButton rows={fuelRows} filename={`fuel_${from}_to_${to}`} sheet="Fuel" label="Export fuel" />
       </PageHeader>

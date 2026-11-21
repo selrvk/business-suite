@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { addDays, monthEnd, monthStart, toYmd } from "@/lib/format"
+import { CustomDates } from "./custom-dates"
 
 type Preset = { label: string; from: string; to: string }
 
@@ -26,7 +27,7 @@ export function payrollPresets(today = toYmd()): Preset[] {
   return [{ label: "Today", from: today, to: today }, { label: "7 days", from: addDays(today, -6), to: today }, current, previous]
 }
 
-/** Date filter: quick presets plus a from/to form. Works through the URL (?from=&to=). */
+/** Date filter: quick presets plus a "Pick dates" button for any range. Works through the URL (?from=&to=). */
 export function DateRange({
   path,
   from,
@@ -43,9 +44,10 @@ export function DateRange({
 }) {
   const keep = Object.entries(extra).filter((entry): entry is [string, string] => !!entry[1])
   const href = (f: string, t: string) => `${path}?${new URLSearchParams([...keep, ["from", f], ["to", t]])}`
+  const custom = !presets.some(p => p.from === from && p.to === to)
 
   return (
-    <div className="flex flex-wrap items-end gap-3 no-print">
+    <div className="flex flex-wrap items-center gap-2 no-print">
       <div className="segmented">
         {presets.map(p => (
           <Link key={p.label} href={href(p.from, p.to)} data-active={p.from === from && p.to === to}>
@@ -53,22 +55,7 @@ export function DateRange({
           </Link>
         ))}
       </div>
-      <form className="flex flex-wrap items-end gap-2" action={path}>
-        {keep.map(([k, v]) => (
-          <input key={k} type="hidden" name={k} value={v} />
-        ))}
-        <label className="max-sm:flex-1 max-sm:min-w-0">
-          <span className="label">From</span>
-          <input className="input" type="date" name="from" defaultValue={from} />
-        </label>
-        <label className="max-sm:flex-1 max-sm:min-w-0">
-          <span className="label">To</span>
-          <input className="input" type="date" name="to" defaultValue={to} />
-        </label>
-        <button className="btn btn-secondary" type="submit">
-          Apply
-        </button>
-      </form>
+      <CustomDates path={path} from={from} to={to} keep={keep} active={custom} />
     </div>
   )
 }

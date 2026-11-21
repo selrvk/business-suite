@@ -21,7 +21,6 @@ export default async function StockInPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Inventory"
         title="Stock In"
         subtitle="Receiving a delivery? Scan each product (scan twice for 2), check the quantities, then save. Every change is logged."
       />

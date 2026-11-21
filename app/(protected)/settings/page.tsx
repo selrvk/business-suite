@@ -44,7 +44,7 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="System" title="Settings" />
+      <PageHeader title="Settings" />
 
       <div className="flex flex-col gap-6 max-w-4xl">
         <section className="card">
