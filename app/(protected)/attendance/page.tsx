@@ -1,12 +1,13 @@
 import Link from "next/link"
-import { FileClock, Sheet, Timer, Users } from "lucide-react"
+import { FileClock, Timer, Users } from "lucide-react"
 import { DbError } from "@/components/db-error"
-import { Empty, PageHeader, Stat } from "@/components/page-header"
+import { Empty, PageHeader } from "@/components/page-header"
 import { requireModule, requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
-import { formatDuration, formatLongDate, startOfDay, toYmd } from "@/lib/format"
+import { formatLongDate, startOfDay, toYmd } from "@/lib/format"
 import type { AttendanceRecord, Employee } from "@/lib/types"
 import { AttendanceBoard, type BoardRow } from "./attendance-board"
+import { AttendanceSummary } from "./attendance-summary"
 
 export const metadata = { title: "Attendance" }
 
@@ -58,23 +59,13 @@ export default async function AttendancePage() {
       <PageHeader title="Attendance" subtitle={formatLongDate(new Date())}>
         {isAdmin && (
           <Link href="/attendance/import" className="btn btn-secondary">
-            <FileClock size={14} /> Import from scanner
+            <FileClock size={14} aria-hidden /> Import from scanner
           </Link>
         )}
-        <Link href="/attendance/records" className="btn btn-secondary">
-          <Sheet size={14} /> Timesheets
-        </Link>
         <Link href="/time-clock" className="btn btn-primary">
-          <Timer size={15} /> Open time clock
+          <Timer size={15} aria-hidden /> Open time clock
         </Link>
       </PageHeader>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-        <Stat label="Clocked in now" value={inNow} tone="good" />
-        <Stat label="Came in today" value={`${cameIn} / ${employees.length}`} tone="brand" />
-        <Stat label="Not in yet" value={employees.length - cameIn} tone={employees.length - cameIn ? "warn" : undefined} />
-        <Stat label="Hours today" value={formatDuration(totalMs)} tone="info" hint="All staff combined" />
-      </div>
 
       {employees.length === 0 ? (
         <div className="card">
@@ -86,7 +77,10 @@ export default async function AttendancePage() {
           </Empty>
         </div>
       ) : (
-        <AttendanceBoard rows={rows} />
+        <>
+          <AttendanceSummary inNow={inNow} cameIn={cameIn} staff={employees.length} workedMs={totalMs} />
+          <AttendanceBoard rows={rows} />
+        </>
       )}
     </>
   )

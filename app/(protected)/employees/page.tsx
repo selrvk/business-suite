@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
 import { businessModules } from "@/lib/features"
 import type { Employee } from "@/lib/types"
-import { EmployeeList } from "./employee-list"
+import { AddEmployeeButton, EmployeeList } from "./employee-list"
 
 export const metadata = { title: "Employees" }
 
@@ -27,17 +27,14 @@ export default async function EmployeesPage() {
     <>
       <PageHeader
         title="Employees"
-        subtitle={
-          mods.includes("attendance")
-            ? "Everyone who clocks in or drives. Each person gets a badge code. Print it on an ID card and they scan it at the time clock."
-            : "Your drivers and staff."
-        }
+        subtitle={mods.includes("attendance") ? "Everyone who clocks in or drives. Each gets a badge to scan at the time clock." : "Your drivers and staff."}
       >
         {employees.some(e => e.active) && (
           <Link href="/print/labels/employees" target="_blank" className="btn btn-secondary">
-            <Printer size={14} /> Print all badges
+            <Printer size={14} aria-hidden /> Print all badges
           </Link>
         )}
+        {isAdmin && <AddEmployeeButton />}
       </PageHeader>
       <EmployeeList employees={employees} isAdmin={isAdmin} />
     </>

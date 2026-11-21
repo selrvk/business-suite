@@ -1,12 +1,12 @@
 import { DbError } from "@/components/db-error"
 import { DateRange, payrollPresets } from "@/components/date-range"
-import { ExportButton } from "@/components/export-button"
 import { PageHeader } from "@/components/page-header"
 import { requireModule, requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
 import { dayRange, formatDate, formatTime, hoursBetween, monthStart, readRange, startOfDay, toYmd } from "@/lib/format"
 import type { AttendanceRecord, Employee } from "@/lib/types"
 import { Timesheet } from "./timesheet"
+import { EmployeeFilter, TimesheetMenu } from "./timesheet-menus"
 
 export const metadata = { title: "Timesheets" }
 
@@ -69,12 +69,11 @@ export default async function TimesheetsPage({
 
   return (
     <>
-      <PageHeader title="Timesheets" subtitle="Hours worked per employee, ready for payroll. Admins can fix missed or wrong punches.">
-        <ExportButton rows={summaryRows} filename={`timesheet_summary_${from}_to_${to}`} sheet="Summary" label="Export summary" />
-        <ExportButton rows={detailRows} filename={`timesheet_detail_${from}_to_${to}`} sheet="Punches" label="Export all punches" />
+      <PageHeader title="Timesheets" subtitle="Hours worked per employee, ready for payroll.">
+        <TimesheetMenu summaryRows={summaryRows} detailRows={detailRows} from={from} to={to} />
       </PageHeader>
 
-      <div className="flex flex-col gap-3 mb-6">
+      <div className="flex flex-col gap-3 mb-6 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
         <DateRange
           path="/attendance/records"
           from={from}
@@ -82,25 +81,7 @@ export default async function TimesheetsPage({
           presets={payrollPresets(today)}
           extra={{ employee: employeeId ? String(employeeId) : undefined }}
         />
-        <form className="flex items-end gap-2" action="/attendance/records">
-          <input type="hidden" name="from" value={from} />
-          <input type="hidden" name="to" value={to} />
-          <label>
-            <span className="label">Employee</span>
-            <select className="input min-w-56" name="employee" defaultValue={employeeId ?? ""}>
-              <option value="">Everyone</option>
-              {employees.map(e => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                  {e.active ? "" : " (inactive)"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button className="btn btn-secondary" type="submit">
-            Show
-          </button>
-        </form>
+        <EmployeeFilter employees={employees} employeeId={employeeId} from={from} to={to} />
       </div>
 
       <Timesheet
@@ -108,6 +89,8 @@ export default async function TimesheetsPage({
         records={records}
         employees={employees.filter(e => e.active || totals.has(e.id))}
         isAdmin={isAdmin}
+        today={today}
+        range={{ from, to }}
         period={from === to ? formatDate(startOfDay(from)) : `${formatDate(startOfDay(from))} – ${formatDate(startOfDay(to))}`}
       />
     </>
