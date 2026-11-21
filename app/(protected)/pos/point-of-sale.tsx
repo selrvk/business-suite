@@ -38,6 +38,16 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
   const [paymentRef, setPaymentRef] = useState("")
   const router = useRouter()
   const scanRef = useRef<HTMLInputElement>(null)
+  const cartRef = useRef<HTMLElement>(null)
+  // Phones and tablets: the cart sits below the products, so a bar at the bottom jumps to it (hidden while it's on screen).
+  const [cartInView, setCartInView] = useState(false)
+  useEffect(() => {
+    const el = cartRef.current
+    if (!el || typeof IntersectionObserver === "undefined") return
+    const observer = new IntersectionObserver(([entry]) => setCartInView(entry.isIntersecting), { rootMargin: "0px 0px -35% 0px" })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const [query, setQuery] = useState("")
   const [cart, setCart] = useState<Line[]>([])
   const [customer, setCustomer] = useState("")
@@ -51,7 +61,8 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
     const list = q ? items.filter(i => [i.name, i.brand, i.barcode].some(v => v?.toLowerCase().includes(q))) : items
-    return list.slice(0, SHOWN)
+    // Out-of-stock products go last, so the first cards are ones you can sell.
+    return [...list].sort((a, b) => Number(a.current_stock <= 0) - Number(b.current_stock <= 0)).slice(0, SHOWN)
   }, [items, query])
 
   const lines = cart.map(l => ({ ...l, item: byId.get(l.id)! })).filter(l => l.item)
@@ -212,14 +223,11 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
     .slice(0, 4)
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1fr_400px] items-start">
+    <div className={`grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_400px] items-start ${lines.length && !done ? "pb-24 xl:pb-0" : ""}`}>
       {/* ── Products ── */}
       <section className="flex flex-col gap-4 min-w-0">
         <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="eyebrow">Sales</p>
-            <h1 className="page-title">Point of Sale</h1>
-          </div>
+          <h1 className="page-title">Point of Sale</h1>
           <Link href="/orders" className="btn btn-secondary no-print">
             <ClipboardList size={14} /> Pending orders
           </Link>
@@ -300,7 +308,11 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
       </section>
 
       {/* ── Cart ── */}
-      <aside className="card xl:sticky xl:top-8 flex flex-col">
+      <aside
+        ref={cartRef}
+        className="card xl:sticky xl:top-8 xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto flex flex-col scroll-mt-20 xl:scroll-mt-4"
+        aria-label="Current sale"
+      >
         <div className="card-header justify-between">
           <span className="flex items-center gap-2">
             <ShoppingCart size={16} className="text-brand" />
@@ -347,7 +359,7 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
           </div>
         ) : (
           <>
-            <div className="flex-1 divide-y divide-white/5 max-h-[45vh] overflow-y-auto">
+            <div className="divide-y divide-white/5">
               {lines.length === 0 ? (
                 <p className="empty">Scan an item to start a sale.</p>
               ) : (
@@ -357,22 +369,25 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
                   const off = applied ? applied.off + applied.vatExempt : lineDiscountAmount(lineTotal, lineDiscounts[id] ?? null)
                   const promoOff = lineDiscountAmount(lineTotal, lineDiscounts[id] ?? null)
                   return (
-                    <div key={id} className="px-4 py-2.5 flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-white truncate">{item.name}</p>
-                          <p className="text-xs faint">
-                            {money(item.price_sell)} × {qty} = <span className={off ? "line-through" : "text-white"}>{money(lineTotal)}</span>
-                            {off > 0 && <span className="text-white"> {money(lineTotal - off)}</span>}
-                            {senior && applied?.senior && (
-                              <span className="text-good">
-                                {" "}
-                                · {applied.senior}%{applied.senior === 20 && applied.vatExempt > 0 ? ", no VAT" : ""}
-                              </span>
-                            )}
-                            {senior && !applied?.senior && promoOff === 0 && <span> · no {discountMode === "senior" ? "Senior" : "PWD"} discount</span>}
-                          </p>
-                        </div>
+                    <div key={id} className="px-4 py-2.5 flex flex-col gap-1.5">
+                      <div className="flex items-baseline gap-3">
+                        <p className="min-w-0 flex-1 text-sm font-medium text-white truncate">{item.name}</p>
+                        <p className="text-sm tabular whitespace-nowrap">
+                          {off > 0 && <span className="faint line-through text-xs mr-1.5">{money(lineTotal)}</span>}
+                          <span className="text-white font-semibold">{money(lineTotal - off)}</span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="min-w-0 flex-1 text-xs faint truncate">
+                          {money(item.price_sell)} × {qty}
+                          {senior && applied?.senior && (
+                            <span className="text-good">
+                              {" "}
+                              · {applied.senior}%{applied.senior === 20 && applied.vatExempt > 0 ? ", no VAT" : ""}
+                            </span>
+                          )}
+                          {senior && !applied?.senior && promoOff === 0 && <span> · no {discountMode === "senior" ? "Senior" : "PWD"} discount</span>}
+                        </p>
                         {can("discounts") && (
                           <button
                             className={`btn btn-icon ${off ? "btn-secondary text-brand" : "btn-ghost"}`}
@@ -554,7 +569,7 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
               {paidNow > 0 && (
                 <div className="flex flex-col gap-2">
                   <span className="label m-0">Payment{credit ? ` · ${money(paidNow)} now` : ""}</span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="grid grid-cols-3 gap-1.5">
                     {METHODS.map(m => (
                       <button key={m} className={`btn btn-sm ${method === m ? "btn-primary" : "btn-secondary"}`} onClick={() => setMethod(m)}>
                         {m}
@@ -599,6 +614,13 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
                 </div>
               )}
 
+            </div>
+
+            {/* Always in view at the bottom of the cart, however long it gets. */}
+            <div
+              className="sticky bottom-0 z-10 flex flex-col gap-2 px-5 pt-3 pb-5 border-t rounded-b-xl"
+              style={{ background: "var(--app-surface)", borderColor: "var(--app-border)" }}
+            >
               <button className="btn btn-primary btn-lg btn-block" onClick={() => checkout(true)} disabled={!lines.length || busy || short || overLimit}>
                 <CircleCheck size={17} />
                 {busy ? "Saving…" : `Complete sale${total ? ` · ${money(total)}` : ""}`}
@@ -610,6 +632,24 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
           </>
         )}
       </aside>
+
+      {lines.length > 0 && !done && !cartInView && (
+        <div
+          className="xl:hidden no-print fixed inset-x-0 md:left-60 bottom-0 z-30 px-4 pt-3 border-t"
+          style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        >
+          <button
+            type="button"
+            className="btn btn-primary btn-lg btn-block justify-between"
+            onClick={() => cartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            <span className="inline-flex items-center gap-2">
+              <ShoppingCart size={16} aria-hidden /> {count} item{count === 1 ? "" : "s"}
+            </span>
+            <span>Checkout · {money(total)}</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
