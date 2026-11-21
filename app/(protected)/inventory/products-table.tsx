@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowUpDown, MoreHorizontal, Pencil, Plus, Printer, Search, SlidersHorizontal, Trash2, X } from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, FileUp, ListFilter, MoreHorizontal, Pencil, Plus, Printer, Search, SlidersHorizontal, Trash2, X } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { downloadExcel, type ExportRow } from "@/components/export-button"
 import { ConfirmDialog } from "@/components/modal"
 import { useScanner } from "@/hooks/use-scanner"
 import { beep } from "@/lib/beep"
@@ -21,7 +22,7 @@ import { deleteProduct } from "./actions"
 import { AdjustStockModal, ProductModal } from "./product-modals"
 
 type SortKey = "name" | "brand" | "current_stock" | "price_sell" | "value" | "location" | "expires"
-const PAGE_SIZE = 15
+const PAGE_SIZE = 25
 
 export function ProductsTable({
   items,
@@ -56,6 +57,8 @@ export function ProductsTable({
   const [adjusting, setAdjusting] = useState<Item | null>(null)
   const [deleting, setDeleting] = useState<Item | null>(null)
   const [unknownCode, setUnknownCode] = useState<string | null>(null)
+  // On phones the brand/category/supplier pickers fold away behind a Filters button.
+  const [showPickers, setShowPickers] = useState(false)
 
   const brands = useMemo(() => [...new Set(items.map(i => i.brand).filter(Boolean) as string[])].sort(), [items])
   const categories = useMemo(() => [...new Set(items.map(i => i.category).filter(Boolean) as string[])].sort(), [items])
@@ -63,6 +66,10 @@ export function ProductsTable({
     () => [...new Set(items.map(i => i.supplier_id).filter(Boolean) as number[])].map(id => [id, suppliers[id] ?? "?"] as const).sort((a, b) => a[1].localeCompare(b[1])),
     [items, suppliers],
   )
+  const isLow = (i: Item) => i.current_stock > 0 && i.current_stock <= levelOf(i)
+  const lowCount = useMemo(() => items.filter(isLow).length, [items, lowStock]) // eslint-disable-line react-hooks/exhaustive-deps -- isLow only depends on lowStock
+  const outCount = useMemo(() => items.filter(i => i.current_stock <= 0).length, [items])
+
   /** Small details shown under a product's name. */
   const details = (i: Item) =>
     [
@@ -95,7 +102,7 @@ export function ProductsTable({
       if (brand && i.brand !== brand) return false
       if (category && i.category !== category) return false
       if (supplier && String(i.supplier_id ?? "") !== supplier) return false
-      if (stockFilter === "low" && !(i.current_stock > 0 && i.current_stock <= levelOf(i))) return false
+      if (stockFilter === "low" && !isLow(i)) return false
       if (stockFilter === "out" && i.current_stock > 0) return false
       return true
     })
@@ -114,32 +121,77 @@ export function ProductsTable({
       const cmp = typeof x === "string" ? x.localeCompare(String(y)) : Number(x) - Number(y)
       return sort.desc ? -cmp : cmp
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- levelOf only depends on lowStock
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- levelOf and isLow only depend on lowStock
   }, [items, search, brand, category, supplier, stockFilter, sort, lowStock, suppliers, expiry])
 
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const current = Math.min(page, pageCount - 1)
   const visible = rows.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE)
   const filtering = search || brand || category || supplier || stockFilter !== "all"
+  const pickersOn = [brand, category, supplier].filter(Boolean).length
+  const hasPickers = brands.length > 0 || (showCategory && categories.length > 0) || (showSupplier && supplierOptions.length > 0)
+  const clearFilters = () => {
+    setSearch("")
+    setBrand("")
+    setCategory("")
+    setSupplier("")
+    setStockFilter("all")
+    setPage(0)
+  }
 
   const sortBy = (key: SortKey) =>
     setSort(s => ({ key, desc: s.key === key ? !s.desc : !["name", "brand", "location", "expires"].includes(key) }))
-  const sortHeader = (k: SortKey, label: string, right = false) => (
-    <th className={right ? "num" : undefined}>
-      <button className={`inline-flex items-center gap-1 uppercase ${sort.key === k ? "text-white" : ""}`} onClick={() => sortBy(k)}>
-        {label}
-        <ArrowUpDown size={11} />
-      </button>
-    </th>
-  )
+  const sortHeader = (k: SortKey, label: string, right = false, className = "") => {
+    const active = sort.key === k
+    const Icon = active ? (sort.desc ? ArrowDown : ArrowUp) : ArrowUpDown
+    return (
+      <th className={`${right ? "num" : ""} ${className}`.trim() || undefined} aria-sort={active ? (sort.desc ? "descending" : "ascending") : undefined}>
+        <button type="button" className={`inline-flex items-center gap-1 uppercase hover:text-white ${active ? "text-white" : ""}`} onClick={() => sortBy(k)}>
+          {label}
+          <Icon size={11} className={active ? "" : "opacity-60"} aria-hidden />
+        </button>
+      </th>
+    )
+  }
 
-  const stockBadge = (i: Item) =>
+  /** Stock with its unit; amber when low, a red "Out" when there's none. Stacked (the "Low" tag under the number) on phones. */
+  const stockCell = (i: Item, stacked = false) =>
     i.current_stock <= 0 ? (
-      <span className="pill" data-tone="bad">Out</span>
-    ) : i.current_stock <= levelOf(i) ? (
-      <span className="pill" data-tone="warn">{num(i.current_stock)} low</span>
+      <span className="pill" data-tone="bad">
+        Out
+      </span>
+    ) : stacked ? (
+      <span className="inline-flex flex-col items-end gap-1 whitespace-nowrap">
+        <span>
+          <span className={`tabular font-semibold ${isLow(i) ? "text-warn" : "text-white"}`}>{num(i.current_stock)}</span>{" "}
+          <span className="faint text-xs">{i.unit}</span>
+        </span>
+        {isLow(i) && (
+          <span className="pill" data-tone="warn">
+            Low
+          </span>
+        )}
+      </span>
     ) : (
-      <span className="tabular">{num(i.current_stock)}</span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        {isLow(i) && (
+          <span className="pill" data-tone="warn">
+            Low
+          </span>
+        )}
+        <span className={`tabular font-semibold ${isLow(i) ? "text-warn" : "text-white"}`}>{num(i.current_stock)}</span>
+        <span className="faint text-xs">{i.unit}</span>
+      </span>
+    )
+
+  /** The product's name; tapping it opens the edit form for those who may edit. */
+  const nameOf = (i: Item, className = "") =>
+    can("edit_products") ? (
+      <button type="button" className={`product-name ${className}`} onClick={() => setEditing(i)}>
+        {i.name}
+      </button>
+    ) : (
+      <p className={`font-medium text-white ${className}`}>{i.name}</p>
     )
 
   const expiryBadge = (i: Item) => {
@@ -216,119 +268,157 @@ export function ProductsTable({
       )}
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 [&>select]:sm:w-auto">
-        <div className="relative sm:flex-1 sm:min-w-64">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 faint" />
-          <input
-            className="input pl-9"
-            value={search}
-            onChange={e => {
-              setSearch(e.target.value)
-              setPage(0)
-            }}
-            placeholder={`Search name, brand, barcode${showLocation ? ", shelf" : ""}… or just scan`}
-          />
+      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+        <div className="flex gap-2 md:flex-1 md:min-w-64">
+          <div className="relative flex-1 min-w-0">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 faint" aria-hidden />
+            <input
+              className="input pl-9"
+              value={search}
+              aria-label="Search products"
+              onChange={e => {
+                setSearch(e.target.value)
+                setPage(0)
+              }}
+              placeholder={`Search name, brand, barcode${showLocation ? ", shelf" : ""}… or just scan`}
+            />
+          </div>
+          {hasPickers && (
+            <button type="button" className="btn btn-secondary md:hidden shrink-0" aria-expanded={showPickers} onClick={() => setShowPickers(v => !v)}>
+              <ListFilter size={14} aria-hidden /> Filters{pickersOn > 0 && ` · ${pickersOn}`}
+            </button>
+          )}
         </div>
-        <select className="input" value={brand} onChange={e => {
-            setBrand(e.target.value)
-            setPage(0)
-          }}>
-          <option value="">All brands</option>
-          {brands.map(b => (
-            <option key={b}>{b}</option>
-          ))}
-        </select>
-        {showCategory && categories.length > 0 && (
-          <select
-            className="input"
-            value={category}
-            onChange={e => {
-              setCategory(e.target.value)
-              setPage(0)
-            }}
-          >
-            <option value="">All categories</option>
-            {categories.map(c => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
+        {hasPickers && (
+          <div className={`${showPickers ? "grid" : "hidden"} grid-cols-1 sm:grid-cols-3 gap-2 md:flex md:flex-wrap`}>
+            {brands.length > 0 && (
+              <select
+                className="input md:w-auto"
+                aria-label="Brand"
+                value={brand}
+                onChange={e => {
+                  setBrand(e.target.value)
+                  setPage(0)
+                }}
+              >
+                <option value="">All brands</option>
+                {brands.map(b => (
+                  <option key={b}>{b}</option>
+                ))}
+              </select>
+            )}
+            {showCategory && categories.length > 0 && (
+              <select
+                className="input md:w-auto"
+                aria-label="Category"
+                value={category}
+                onChange={e => {
+                  setCategory(e.target.value)
+                  setPage(0)
+                }}
+              >
+                <option value="">All categories</option>
+                {categories.map(c => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            )}
+            {showSupplier && supplierOptions.length > 0 && (
+              <select
+                className="input md:w-auto"
+                aria-label="Supplier"
+                value={supplier}
+                onChange={e => {
+                  setSupplier(e.target.value)
+                  setPage(0)
+                }}
+              >
+                <option value="">All suppliers</option>
+                {supplierOptions.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         )}
-        {showSupplier && supplierOptions.length > 0 && (
-          <select
-            className="input"
-            value={supplier}
-            onChange={e => {
-              setSupplier(e.target.value)
-              setPage(0)
-            }}
-          >
-            <option value="">All suppliers</option>
-            {supplierOptions.map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
-              </option>
-            ))}
-          </select>
-        )}
-        <div className="segmented self-stretch">
-          {(["all", "low", "out"] as const).map(f => (
-            <button key={f} data-active={stockFilter === f} onClick={() => {
+        <div className="segmented w-full md:w-auto" role="group" aria-label="Show">
+          {(
+            [
+              ["all", "All", items.length],
+              ["low", "Low stock", lowCount],
+              ["out", "Out of stock", outCount],
+            ] as const
+          ).map(([f, label, n]) => (
+            <button
+              key={f}
+              type="button"
+              className="flex-1 md:flex-none"
+              data-active={stockFilter === f}
+              aria-pressed={stockFilter === f}
+              onClick={() => {
                 setStockFilter(f)
                 setPage(0)
-              }}>
-              {f === "all" ? "All" : f === "low" ? "Low stock" : "Out of stock"}
+              }}
+            >
+              {label}
+              <span className="seg-count" data-tone={n > 0 ? (f === "low" ? "warn" : f === "out" ? "bad" : undefined) : undefined}>
+                {num(n)}
+              </span>
             </button>
           ))}
         </div>
       </div>
       {filtering && (
-        <button
-          className="btn btn-ghost btn-sm self-start"
-          onClick={() => {
-            setSearch("")
-            setBrand("")
-            setCategory("")
-            setSupplier("")
-            setStockFilter("all")
-          }}
-        >
-          <X size={12} /> Clear filters · {rows.length} of {items.length}
-        </button>
+        <p className="flex items-center gap-3 text-xs muted">
+          <span>
+            {num(rows.length)} of {num(items.length)} products
+          </span>
+          <button type="button" className="inline-flex items-center gap-1 underline decoration-dotted hover:text-white" onClick={clearFilters}>
+            <X size={12} aria-hidden /> Clear filters
+          </button>
+        </p>
       )}
 
-      {/* Desktop table */}
-      <div className="table-wrap hidden md:block">
+      {/* Table on wide screens (brand and value get their own columns on the widest) */}
+      <div className="table-wrap hidden lg:block">
         <table className="table">
           <thead>
             <tr>
               {sortHeader("name", "Product")}
-              {sortHeader("brand", "Brand")}
+              {sortHeader("brand", "Brand", false, "hidden xl:table-cell")}
               {showLocation && sortHeader("location", "Shelf")}
               {sortHeader("current_stock", "Stock", true)}
               {showCost && <th className="num">Cost</th>}
               {sortHeader("price_sell", "Price", true)}
               {showExpiry && sortHeader("expires", "Expires")}
-              {sortHeader("value", "Stock value", true)}
-              <th />
+              {sortHeader("value", "Value", true, "hidden xl:table-cell")}
+              <th>
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {visible.map(i => (
               <tr key={i.id}>
-                <td>
-                  <p className="font-medium text-white">{i.name}</p>
-                  <p className="text-[0.7rem] faint mono">{i.barcode ?? "no barcode"}</p>
-                  {details(i).length > 0 && <p className="text-[0.7rem] faint">{details(i).join(" · ")}</p>}
+                <td className="max-w-[26rem]">
+                  {nameOf(i)}
+                  <p className="text-[0.72rem] faint truncate">
+                    <span className="mono">{i.barcode ?? "No barcode"}</span>
+                    {i.brand && <span className="xl:hidden"> · {i.brand}</span>}
+                    {details(i).map(d => (
+                      <span key={d}> · {d}</span>
+                    ))}
+                  </p>
                 </td>
-                <td className="muted">{i.brand ?? "—"}</td>
-                {showLocation && <td className="muted">{i.location ?? "—"}</td>}
-                <td className="num">
-                  {stockBadge(i)} <span className="faint text-xs">{i.unit}</span>
-                </td>
+                <td className="muted hidden xl:table-cell">{i.brand ?? "—"}</td>
+                {showLocation && <td className="muted whitespace-nowrap">{i.location ?? "—"}</td>}
+                <td className="num">{stockCell(i)}</td>
                 {showCost && <td className="num muted">{money(i.price_buy)}</td>}
                 <td className="num text-white">{money(i.price_sell)}</td>
                 {showExpiry && <td>{expiryBadge(i)}</td>}
-                <td className="num text-good font-semibold">{money(i.current_stock * i.price_sell)}</td>
+                <td className="num muted hidden xl:table-cell">{i.current_stock > 0 ? money(i.current_stock * i.price_sell) : <span className="faint">—</span>}</td>
                 <td className="w-10">{actions(i)}</td>
               </tr>
             ))}
@@ -337,35 +427,37 @@ export function ProductsTable({
         {visible.length === 0 && (items.length ? <p className="empty">No products match.</p> : <NoProducts isAdmin={isAdmin} />)}
       </div>
 
-      {/* Mobile list */}
-      <div className="md:hidden card divide-y divide-white/5">
+      {/* List on phones and tablets */}
+      <div className="lg:hidden card divide-y divide-white/5">
         {visible.map(i => (
-          <div key={i.id} className="flex items-center gap-3 px-4 py-3">
+          <div key={i.id} className="flex items-center gap-3 pl-4 pr-2 py-3">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-white truncate">{i.name}</p>
-              <p className="text-xs faint truncate">
-                {[i.brand, money(i.price_sell), i.unit, showLocation && i.location, ...details(i)].filter(Boolean).join(" · ")}
-              </p>
+              {nameOf(i, "block max-w-full truncate text-left")}
+              <p className="text-xs faint truncate">{[i.brand, money(i.price_sell), showLocation && i.location, ...details(i)].filter(Boolean).join(" · ")}</p>
               {showExpiry && expiry[i.id] && <div className="mt-1">{expiryBadge(i)}</div>}
             </div>
-            <div className="text-right text-sm">{stockBadge(i)}</div>
+            <div className="text-right text-sm">{stockCell(i, true)}</div>
             {actions(i)}
           </div>
         ))}
         {visible.length === 0 && (items.length ? <p className="empty">No products match.</p> : <NoProducts isAdmin={isAdmin} />)}
       </div>
 
-      {pageCount > 1 && (
-        <div className="flex items-center justify-between">
-          <button className="btn btn-secondary btn-sm" onClick={() => setPage(current - 1)} disabled={current === 0}>
-            Previous
-          </button>
-          <span className="text-xs faint">
-            Page {current + 1} of {pageCount}
+      {rows.length > 0 && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs muted tabular">
+            {num(current * PAGE_SIZE + 1)}–{num(Math.min(rows.length, (current + 1) * PAGE_SIZE))} of {num(rows.length)}
           </span>
-          <button className="btn btn-secondary btn-sm" onClick={() => setPage(current + 1)} disabled={current >= pageCount - 1}>
-            Next
-          </button>
+          {pageCount > 1 && (
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(current - 1)} disabled={current === 0}>
+                Previous
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(current + 1)} disabled={current >= pageCount - 1}>
+                Next
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -393,6 +485,47 @@ export function ProductsTable({
         action={() => deleteProduct(deleting!.id)}
       />
     </div>
+  )
+}
+
+/** The header's "More" menu: import, export and labels, which are used now and then. */
+export function ProductsMenu({ exportRows, filename, canImport }: { exportRows: ExportRow[]; filename: string; canImport: boolean }) {
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle")
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="btn btn-secondary" aria-label="More product actions" disabled={state === "busy"}>
+          <MoreHorizontal size={15} aria-hidden /> {state === "busy" ? "Exporting…" : state === "failed" ? "Export failed" : "More"}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {canImport && (
+          <DropdownMenuItem asChild>
+            <Link href="/inventory/import">
+              <FileUp /> Import from Excel
+            </Link>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
+          onSelect={async () => {
+            setState("busy")
+            try {
+              await downloadExcel(exportRows, filename, "Inventory")
+              setState("idle")
+            } catch {
+              setState("failed")
+            }
+          }}
+        >
+          <Download /> Export to Excel
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/print/labels/products" target="_blank">
+            <Printer /> Print labels
+          </Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

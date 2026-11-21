@@ -6,6 +6,19 @@ import type { ActionResult } from "@/lib/types"
 
 export type ExportRow = Record<string, string | number | null | undefined>
 
+/** Saves rows as an Excel file in the browser. */
+export async function downloadExcel(data: ExportRow[], filename: string, sheet = "Sheet1") {
+  const XLSX = await import("xlsx")
+  const ws = XLSX.utils.json_to_sheet(data)
+  const headers = Object.keys(data[0] ?? {})
+  ws["!cols"] = headers.map(h => ({
+    wch: Math.min(48, Math.max(h.length, ...data.slice(0, 200).map(r => String(r[h] ?? "").length)) + 2),
+  }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0, 31))
+  XLSX.writeFile(wb, `${filename}.xlsx`)
+}
+
 /**
  * Downloads rows as an Excel file. Pass `rows` directly, or `load` (a server
  * action) to fetch everything at click time.
@@ -38,15 +51,7 @@ export function ExportButton({
         if (!result.ok) throw new Error(result.error)
         data = result.data
       }
-      const XLSX = await import("xlsx")
-      const ws = XLSX.utils.json_to_sheet(data)
-      const headers = Object.keys(data[0] ?? {})
-      ws["!cols"] = headers.map(h => ({
-        wch: Math.min(48, Math.max(h.length, ...data.slice(0, 200).map(r => String(r[h] ?? "").length)) + 2),
-      }))
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0, 31))
-      XLSX.writeFile(wb, `${filename}.xlsx`)
+      await downloadExcel(data, filename, sheet)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed")
     } finally {

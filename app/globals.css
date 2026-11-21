@@ -584,6 +584,7 @@
 
   /* ---- tables ---- */
   .table-wrap {
+    position: relative;
     overflow-x: auto;
     background: var(--app-surface);
     border: 1px solid var(--app-border);
@@ -776,6 +777,35 @@
   .segmented > [data-active="true"] {
     color: #fff;
     background: var(--brand-soft);
+  }
+  .seg-count {
+    margin-left: 0.4rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--app-faint);
+  }
+  .seg-count[data-tone="warn"] {
+    color: var(--app-warning);
+  }
+  .seg-count[data-tone="bad"] {
+    color: var(--app-danger);
+  }
+  /* A product name that opens its edit form. */
+  .product-name {
+    font-weight: 500;
+    color: #fff;
+    text-align: left;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    transition: text-decoration-color 0.15s ease;
+  }
+  .product-name:hover {
+    text-decoration-color: var(--app-muted);
+  }
+  .product-name:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 3px;
   }
   .kbd {
     font-family: var(--font-mono);

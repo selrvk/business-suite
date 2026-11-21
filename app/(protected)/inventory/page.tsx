@@ -1,15 +1,12 @@
-import Link from "next/link"
-import { FileUp, PackagePlus, Printer } from "lucide-react"
 import { DbError } from "@/components/db-error"
-import { ExportButton } from "@/components/export-button"
-import { PageHeader, Stat } from "@/components/page-header"
+import { PageHeader } from "@/components/page-header"
 import { requireModule, requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
 import { fetchAll } from "@/lib/db"
 import { customFields, hasOption } from "@/lib/features"
-import { money, num, toYmd } from "@/lib/format"
+import { num, pesos, toYmd } from "@/lib/format"
 import type { Item } from "@/lib/types"
-import { AddProductButton, ProductsTable } from "./products-table"
+import { AddProductButton, ProductsMenu, ProductsTable } from "./products-table"
 
 export const metadata = { title: "Products" }
 
@@ -47,11 +44,10 @@ export default async function InventoryPage() {
     if (!expiry[b.item_id] || b.expires_on < expiry[b.item_id]) expiry[b.item_id] = b.expires_on
   }
 
-  const low = business.low_stock_threshold
   const units = items.reduce((sum, i) => sum + Math.max(0, i.current_stock), 0)
-  const costValue = items.reduce((sum, i) => sum + Math.max(0, i.current_stock) * i.price_buy, 0)
-  const lowCount = items.filter(i => i.current_stock > 0 && i.current_stock <= (i.reorder_level ?? low)).length
-  const outCount = items.filter(i => i.current_stock <= 0).length
+  const value = showCost
+    ? `${pesos(items.reduce((sum, i) => sum + Math.max(0, i.current_stock) * i.price_buy, 0))} at cost`
+    : `${pesos(items.reduce((sum, i) => sum + Math.max(0, i.current_stock) * i.price_sell, 0))} at selling price`
 
   // Same column names the importer understands, so this file can be edited and imported back.
   const exportRows = items.map(i => ({
@@ -74,32 +70,10 @@ export default async function InventoryPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Inventory" title="Products" subtitle="Scan any product to find it. Scan an unknown barcode to add it.">
-        <ExportButton rows={exportRows} filename={`inventory_${toYmd()}`} sheet="Inventory" />
-        {isAdmin && (
-          <Link href="/inventory/import" className="btn btn-secondary">
-            <FileUp size={14} /> Import
-          </Link>
-        )}
-        <Link href="/print/labels/products" target="_blank" className="btn btn-secondary">
-          <Printer size={14} /> Labels
-        </Link>
-        <Link href="/inventory/stock-in" className="btn btn-secondary">
-          <PackagePlus size={14} /> Stock in
-        </Link>
+      <PageHeader title="Products" subtitle={`${num(items.length)} products · ${num(units)} units on hand · ${value}`}>
+        <ProductsMenu exportRows={exportRows} filename={`inventory_${toYmd()}`} canImport={isAdmin} />
         <AddProductButton />
       </PageHeader>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-        <Stat label="Products" value={num(items.length)} hint={`${num(units)} units on hand`} />
-        {showCost ? (
-          <Stat label="Stock value (cost)" value={money(costValue)} tone="info" />
-        ) : (
-          <Stat label="Stock value (price)" value={money(items.reduce((sum, i) => sum + Math.max(0, i.current_stock) * i.price_sell, 0))} tone="info" />
-        )}
-        <Stat label="Low stock" value={lowCount} tone={lowCount ? "warn" : "good"} hint="At or below their low-stock level" />
-        <Stat label="Out of stock" value={outCount} tone={outCount ? "bad" : "good"} />
-      </div>
 
       <ProductsTable items={items} isAdmin={isAdmin} suppliers={suppliers} expiry={expiry} />
     </>
