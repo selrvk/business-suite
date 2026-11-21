@@ -616,6 +616,20 @@
   .table tbody tr:last-child td {
     border-bottom: none;
   }
+  /* A heading row that starts a group (a day in Sales History). */
+  .table .day-row th {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #fff;
+    padding: 0.6rem 1rem;
+    background: var(--app-surface-2);
+    border-top: 1px solid var(--app-border);
+  }
+  .table tbody tr.day-row:hover th {
+    background: var(--app-surface-2);
+  }
   .table tbody tr:hover td {
     background: rgba(255, 255, 255, 0.02);
   }
