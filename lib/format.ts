@@ -18,6 +18,18 @@ export function price(value: number) {
     : money(value)
 }
 
+const pesoFormat = new Intl.NumberFormat(config.locale, {
+  style: "currency",
+  currency: config.currency,
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+})
+
+/** Whole pesos, for totals at a glance (the dashboard): "₱1,772,184". */
+export function pesos(value: number | string | null | undefined) {
+  return pesoFormat.format(Math.round(Number(value ?? 0)) || 0)
+}
+
 export function num(value: number | string | null | undefined, maxDecimals = 0) {
   return Number(value ?? 0).toLocaleString(config.locale, { maximumFractionDigits: maxDecimals })
 }
@@ -94,6 +106,12 @@ const pad = (n: number) => String(n).padStart(2, "0")
 
 export function isYmd(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+/** "Good morning", "Good afternoon" or "Good evening", by the clock in the business's time zone. */
+export function greeting(date: Date = new Date()) {
+  const hour = zonedParts(date).hour
+  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
 }
 
 export function toYmd(date: DateLike = new Date()) {

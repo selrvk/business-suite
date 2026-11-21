@@ -3,21 +3,24 @@ export function PageHeader({
   title,
   subtitle,
   children,
+  actionsClassName = "flex flex-wrap items-center gap-2",
 }: {
-  eyebrow: string
+  eyebrow?: string
   title: React.ReactNode
   subtitle?: React.ReactNode
   /** Buttons shown on the right. */
   children?: React.ReactNode
+  /** Layout of the buttons (a flex row unless set). */
+  actionsClassName?: string
 }) {
   return (
     <header className="page-header">
       <div className="min-w-0">
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1 className="page-title">{title}</h1>
         {subtitle && <p className="page-subtitle">{subtitle}</p>}
       </div>
-      {children && <div className="flex flex-wrap items-center gap-2 no-print">{children}</div>}
+      {children && <div className={`${actionsClassName} no-print`}>{children}</div>}
     </header>
   )
 }

@@ -1,17 +1,15 @@
-import Link from "next/link"
-import { ScanBarcode, Timer, Truck, Zap, type LucideIcon } from "lucide-react"
 import { DbError } from "@/components/db-error"
-import { PageHeader, Stat } from "@/components/page-header"
-import { SetupChecklist, type SetupStep } from "@/components/setup-checklist"
+import { type SetupStep } from "@/components/setup-checklist"
 import { requireUser } from "@/lib/auth"
-import { EXPIRY_SOON_DAYS, describeExpiry } from "@/lib/expiry"
+import { EXPIRY_SOON_DAYS } from "@/lib/expiry"
 import { businessModules, hasOption } from "@/lib/features"
-import { addDays, dayRange, formatDuration, formatLongDate, formatShortDateTime, formatTime, money, monthStart, num, toYmd } from "@/lib/format"
+import { addDays, dayRange, monthStart, toYmd } from "@/lib/format"
+import { DashboardView, type DashboardData } from "./dashboard-view"
 
 export const metadata = { title: "Dashboard" }
 
-type SalesSummary = { count: number; total: number }
-type InventorySummary = { products: number; units: number; cost_value: number; sell_value: number; low_stock: number; out_of_stock: number }
+type SalesSummary = DashboardData["salesToday"]
+type InventorySummary = DashboardData["inventory"]
 
 const none = Promise.resolve({ data: null, error: null, count: null })
 
@@ -161,175 +159,28 @@ export default async function DashboardPage() {
   // Nothing recorded yet: the checklist alone, instead of a page of zeros.
   const fresh = showSetup && products === 0 && (anySales.count ?? 0) === 0
 
-  const actions: { href: string; label: string; icon: LucideIcon; show: boolean }[] = [
-    { href: "/pos", label: "New sale", icon: ScanBarcode, show: sales },
-    { href: "/inventory/quick-scan", label: "Quick scan", icon: Zap, show: inventory && can("adjust_stock") },
-    { href: "/time-clock", label: "Time clock", icon: Timer, show: attendance },
-    { href: "/fleet", label: "Log a trip", icon: Truck, show: fleet },
-  ]
-
-  return (
-    <>
-      <PageHeader eyebrow={business.name} title="Dashboard" subtitle={`${formatLongDate(now)} · Hi, ${username}`} />
-
-      {showSetup && <SetupChecklist steps={steps} businessName={business.name} />}
-
-      {!fresh && (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-            {sales && <Stat label="Sales today" value={money(st?.total)} hint={`${st?.count ?? 0} transactions`} tone="good" />}
-            {sales && <Stat label="This month" value={money(sm?.total)} hint={`${sm?.count ?? 0} sales`} tone="brand" />}
-            {inventory && <Stat label="Stock value" value={money(inv?.sell_value)} hint={can("see_costs") ? `${money(inv?.cost_value)} at cost` : "At selling price"} tone="info" />}
-            {inventory && (
-              <Stat
-                label="Needs restock"
-                value={(inv?.low_stock ?? 0) + (inv?.out_of_stock ?? 0)}
-                hint={`${inv?.out_of_stock ?? 0} out of stock`}
-                tone={inv?.out_of_stock ? "bad" : inv?.low_stock ? "warn" : "good"}
-              />
-            )}
-            {attendance && <Stat label="Clocked in" value={present.length} hint="Staff working now" tone="good" />}
-            {fleet && <Stat label="On the road" value={road.length} hint={`${num(kmMonth)} km this month`} tone="info" />}
-            {sales && <Stat label="Pending orders" value={pending.count ?? 0} tone={pending.count ? "warn" : undefined} />}
-            {expiry && (
-              <Stat
-                label="Expiring soon"
-                value={soon.length - expiredCount}
-                hint={expiredCount ? `${expiredCount} batch${expiredCount === 1 ? "" : "es"} already expired` : `Within ${EXPIRY_SOON_DAYS} days`}
-                tone={expiredCount ? "bad" : soon.length ? "warn" : "good"}
-              />
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2 mb-10">
-            {actions
-              .filter(a => a.show)
-              .map(a => (
-                <Link key={a.href} href={a.href} className="btn btn-secondary btn-lg">
-                  <a.icon size={17} className="text-brand" /> {a.label}
-                </Link>
-              ))}
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            {inventory && (
-              <Panel title="Running low" link={{ href: "/inventory/reorder", label: "Reorder list" }}>
-                {products === 0 ? (
-                  <p className="text-sm faint py-4">
-                    No products yet.{" "}
-                    <Link href="/inventory" className="underline">
-                      Add your products
-                    </Link>{" "}
-                    to see what&apos;s running low.
-                  </p>
-                ) : low.length === 0 ? (
-                  <p className="text-sm faint py-4">Everything is above its low-stock level. Nice.</p>
-                ) : (
-                  low.map(i => (
-                    <div key={i.id} className="list-row text-sm">
-                      <span className="flex-1 text-white truncate">{i.name}</span>
-                      <span className="pill" data-tone={i.current_stock <= 0 ? "bad" : "warn"}>
-                        {i.current_stock <= 0 ? "Out" : `${i.current_stock} ${i.unit}`}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </Panel>
-            )}
-
-            {expiry && (
-              <Panel title="Expiring soon" link={{ href: "/inventory/expiry", label: "Expiry dates" }}>
-                {soon.length === 0 ? (
-                  <p className="text-sm faint py-4">Nothing expires in the next {EXPIRY_SOON_DAYS} days.</p>
-                ) : (
-                  soon.slice(0, 8).map(b => {
-                    const e = describeExpiry(b.expires_on, today)
-                    return (
-                      <div key={b.id} className="list-row text-sm">
-                        <span className="flex-1 text-white truncate">
-                          {b.items?.name}
-                          {b.lot && <span className="faint text-xs"> · lot {b.lot}</span>}
-                        </span>
-                        <span className="muted text-xs">
-                          {num(b.quantity)} {b.items?.unit}
-                        </span>
-                        <span className="pill" data-tone={e.tone}>
-                          {e.text}
-                        </span>
-                      </div>
-                    )
-                  })
-                )}
-              </Panel>
-            )}
-
-            {sales && (
-              <Panel title="Latest sales" link={{ href: "/sales", label: "Sales history" }}>
-                {recent.length === 0 ? (
-                  <p className="text-sm faint py-4">No sales yet.</p>
-                ) : (
-                  recent.map(o => (
-                    <div key={o.id} className="list-row text-sm">
-                      <span className="faint w-14">#{o.number}</span>
-                      <span className="flex-1 muted truncate">{o.customer_name || "Walk-in"}</span>
-                      <span className="faint text-xs">{formatShortDateTime(o.date_completed)}</span>
-                      <span className="text-white font-semibold w-28 text-right">{money(o.total_price)}</span>
-                    </div>
-                  ))
-                )}
-              </Panel>
-            )}
-
-            {attendance && (
-              <Panel title="Who's in" link={{ href: "/attendance", label: "Attendance" }}>
-                {present.length === 0 ? (
-                  <p className="text-sm faint py-4">Nobody is clocked in.</p>
-                ) : (
-                  present.map(p => (
-                    <div key={p.id} className="list-row text-sm">
-                      <span className="flex-1 text-white">{p.employees?.name}</span>
-                      <span className="faint text-xs">since {formatTime(p.clock_in)}</span>
-                      <span className="muted w-20 text-right">{formatDuration(now.getTime() - new Date(p.clock_in).getTime())}</span>
-                    </div>
-                  ))
-                )}
-              </Panel>
-            )}
-
-            {fleet && (
-              <Panel title="On the road" link={{ href: "/fleet", label: "Vehicles" }}>
-                {road.length === 0 ? (
-                  <p className="text-sm faint py-4">All vehicles are in.</p>
-                ) : (
-                  road.map(t => (
-                    <div key={t.id} className="list-row text-sm">
-                      <span className="text-white w-28 truncate">{t.vehicles?.name}</span>
-                      <span className="flex-1 muted truncate">
-                        {t.employees?.name ?? "—"} · {t.purpose ?? "—"}
-                      </span>
-                      <span className="faint text-xs">since {formatTime(t.started_at)}</span>
-                    </div>
-                  ))
-                )}
-              </Panel>
-            )}
-          </div>
-        </>
-      )}
-    </>
-  )
-}
-
-function Panel({ title, link, children }: { title: string; link: { href: string; label: string }; children: React.ReactNode }) {
-  return (
-    <section className="card card-body rise">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="section-title">{title}</h2>
-        <Link href={link.href} className="text-xs muted underline decoration-dotted">
-          {link.label}
-        </Link>
-      </div>
-      <div>{children}</div>
-    </section>
-  )
+  const data: DashboardData = {
+    modules: { sales, inventory, attendance, fleet, expiry },
+    username,
+    businessName: business.name,
+    today,
+    now,
+    canSeeCosts: can("see_costs"),
+    canAdjustStock: can("adjust_stock"),
+    steps,
+    showSetup,
+    fresh,
+    salesToday: st,
+    salesMonth: sm,
+    pending: pending.count ?? 0,
+    recent,
+    inventory: inv,
+    low,
+    present,
+    road,
+    kmMonth,
+    soon,
+    expiredCount,
+  }
+  return <DashboardView data={data} />
 }
