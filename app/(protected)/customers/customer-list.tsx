@@ -1,10 +1,17 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Banknote, History, Pencil, Phone, Plus, Search, Trash2 } from "lucide-react"
+import { Banknote, History, MoreHorizontal, Pencil, Plus, Search, Trash2, X } from "lucide-react"
 import { ConfirmDialog, Modal } from "@/components/modal"
-import { formatDateTime, money } from "@/lib/format"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { formatDateTime, money, num } from "@/lib/format"
 import type { Customer } from "@/lib/types"
 import { customerHistory, deleteCustomer, recordPayment, saveCustomer, type LedgerEntry } from "./actions"
 
@@ -12,18 +19,83 @@ const METHODS = ["Cash", "GCash", "Maya", "Card", "Bank transfer", "Other"]
 
 export function CustomerList({ customers, isAdmin, canCredit }: { customers: Customer[]; isAdmin: boolean; canCredit: boolean }) {
   const [search, setSearch] = useState("")
-  const [owingOnly, setOwingOnly] = useState(false)
+  const [show, setShow] = useState<"all" | "owing" | "over">("all")
   const [editing, setEditing] = useState<Customer | null>(null)
   const [paying, setPaying] = useState<Customer | null>(null)
   const [history, setHistory] = useState<Customer | null>(null)
   const [deleting, setDeleting] = useState<Customer | null>(null)
 
+  const owes = (c: Customer) => Number(c.balance) > 0
+  const isOver = (c: Customer) => c.credit_limit != null && Number(c.balance) > Number(c.credit_limit)
+  const counts = { all: customers.length, owing: customers.filter(owes).length, over: customers.filter(isOver).length }
+
+  // People who owe the most come first.
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     return customers
-      .filter(c => (!q || [c.name, c.phone, c.address].some(v => v?.toLowerCase().includes(q))) && (!owingOnly || Number(c.balance) > 0))
+      .filter(c => !q || [c.name, c.phone, c.address, c.notes].some(v => v?.toLowerCase().includes(q)))
+      .filter(c => (show === "owing" ? owes(c) : show === "over" ? isOver(c) : true))
       .sort((a, b) => Number(b.balance) - Number(a.balance) || a.name.localeCompare(b.name))
-  }, [customers, search, owingOnly])
+  }, [customers, search, show])
+  const filtering = search.trim() !== "" || show !== "all"
+
+  /** What they owe: amber, red with "Over limit" past their limit, or credit they have with you. */
+  const owed = (c: Customer) => {
+    const balance = Number(c.balance)
+    if (balance < 0) return <span className="muted text-xs whitespace-nowrap">{money(-balance)} credit</span>
+    if (balance === 0) return <span className="faint">—</span>
+    const over = isOver(c)
+    return (
+      <span className="inline-flex flex-col items-end gap-1 whitespace-nowrap">
+        <span className={`font-semibold tabular ${over ? "text-bad" : "text-warn"}`}>{money(balance)}</span>
+        {over && (
+          <span className="pill" data-tone="bad">
+            Over limit
+          </span>
+        )}
+      </span>
+    )
+  }
+
+  /** The row menu: payment, history, edit and (owners) delete. */
+  const menu = (c: Customer, withPayment: boolean) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="btn btn-ghost btn-icon" aria-label={`Actions for ${c.name}`}>
+          <MoreHorizontal size={16} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {withPayment && canCredit && owes(c) && (
+          <DropdownMenuItem onSelect={() => setPaying(c)}>
+            <Banknote /> Record payment
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onSelect={() => setHistory(c)}>
+          <History /> History
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setEditing(c)}>
+          <Pencil /> Edit
+        </DropdownMenuItem>
+        {isAdmin && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(c)}>
+              <Trash2 /> Delete
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
+  /** Tapping a name shows what they bought on credit and paid. */
+  const nameOf = (c: Customer, className = "") => (
+    <button type="button" className={`product-name ${className}`} onClick={() => setHistory(c)}>
+      {c.name}
+    </button>
+  )
+  const tel = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`
 
   if (!customers.length) {
     return (
@@ -37,87 +109,134 @@ export function CustomerList({ customers, isAdmin, canCredit }: { customers: Cus
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex flex-col md:flex-row gap-2">
         <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 faint" />
-          <input className="input pl-9" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone or address" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 faint" aria-hidden />
+          <input
+            className="input pl-9"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search name, phone, address or notes"
+            aria-label="Search customers"
+          />
         </div>
-        <div className="segmented">
-          <button data-active={!owingOnly} onClick={() => setOwingOnly(false)}>
-            Everyone
-          </button>
-          <button data-active={owingOnly} onClick={() => setOwingOnly(true)}>
-            Owes money
-          </button>
+        <div className="segmented w-full md:w-auto" role="group" aria-label="Show">
+          {(
+            [
+              ["all", "Everyone"],
+              ["owing", "Owe money"],
+              ["over", "Over limit"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className="flex-1 md:flex-none"
+              data-active={show === key}
+              aria-pressed={show === key}
+              onClick={() => setShow(key)}
+            >
+              {label}
+              <span className="seg-count" data-tone={counts[key] > 0 ? (key === "owing" ? "warn" : key === "over" ? "bad" : undefined) : undefined}>
+                {num(counts[key])}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
+      {filtering && (
+        <p className="flex items-center gap-3 text-xs muted">
+          <span>
+            {num(rows.length)} of {num(customers.length)} customers
+          </span>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 underline decoration-dotted hover:text-white"
+            onClick={() => {
+              setSearch("")
+              setShow("all")
+            }}
+          >
+            <X size={12} aria-hidden /> Clear filters
+          </button>
+        </p>
+      )}
 
-      <div className="table-wrap">
+      {/* Table on wide screens */}
+      <div className="table-wrap hidden lg:block">
         <table className="table">
           <thead>
             <tr>
               <th>Customer</th>
-              <th className="hidden md:table-cell">Phone</th>
+              <th>Phone</th>
               <th className="num">Owes</th>
-              <th className="num hidden sm:table-cell">Limit</th>
-              <th />
+              <th className="num hidden xl:table-cell">Limit</th>
+              <th>
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(c => {
-              const balance = Number(c.balance)
-              const over = c.credit_limit != null && balance > Number(c.credit_limit)
-              return (
-                <tr key={c.id}>
-                  <td>
-                    <p className="text-white">{c.name}</p>
-                    {c.notes && <p className="text-[0.7rem] faint truncate max-w-64">{c.notes}</p>}
-                  </td>
-                  <td className="muted hidden md:table-cell">
-                    {c.phone ? (
-                      <a href={`tel:${c.phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1.5 hover:text-white">
-                        <Phone size={12} /> {c.phone}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="num">
-                    {balance > 0 ? (
-                      <span className="pill" data-tone={over ? "bad" : "warn"}>
-                        {money(balance)}
-                      </span>
-                    ) : balance < 0 ? (
-                      <span className="text-good text-xs">{money(-balance)} credit</span>
-                    ) : (
-                      <span className="faint">—</span>
-                    )}
-                  </td>
-                  <td className="num muted hidden sm:table-cell">{c.credit_limit != null ? money(c.credit_limit) : "No limit"}</td>
-                  <td className="text-right whitespace-nowrap">
-                    {canCredit && balance > 0 && (
-                      <button className="btn btn-good btn-sm" onClick={() => setPaying(c)}>
-                        <Banknote size={13} /> Payment
+            {rows.map(c => (
+              <tr key={c.id}>
+                <td className="max-w-[16rem] xl:max-w-[24rem]">
+                  {nameOf(c)}
+                  <p className="text-[0.72rem] faint truncate">
+                    <span className="xl:hidden">{c.credit_limit != null ? `Limit ${money(c.credit_limit)}` : "No limit"}</span>
+                    {(c.notes || c.address) && <span className="xl:hidden"> · </span>}
+                    {[c.address, c.notes].filter(Boolean).join(" · ")}
+                  </p>
+                </td>
+                <td className="muted whitespace-nowrap">
+                  {c.phone ? (
+                    <a href={tel(c.phone)} className="hover:text-white">
+                      {c.phone}
+                    </a>
+                  ) : (
+                    <span className="faint">—</span>
+                  )}
+                </td>
+                <td className="num">{owed(c)}</td>
+                <td className="num muted hidden xl:table-cell">{c.credit_limit != null ? money(c.credit_limit) : <span className="faint">No limit</span>}</td>
+                <td className="whitespace-nowrap">
+                  <div className="flex items-center justify-end gap-1">
+                    {canCredit && owes(c) && (
+                      <button type="button" className="btn btn-good btn-sm" onClick={() => setPaying(c)}>
+                        <Banknote size={13} aria-hidden /> Payment
                       </button>
                     )}
-                    <button className="btn btn-ghost btn-icon" aria-label={`History for ${c.name}`} onClick={() => setHistory(c)}>
-                      <History size={14} />
-                    </button>
-                    <button className="btn btn-ghost btn-icon" aria-label={`Edit ${c.name}`} onClick={() => setEditing(c)}>
-                      <Pencil size={14} />
-                    </button>
-                    {isAdmin && (
-                      <button className="btn btn-ghost btn-icon" aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
+                    {menu(c, false)}
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
-        {rows.length === 0 && <p className="empty">{owingOnly ? "Nobody owes anything. Nice." : "No customers match."}</p>}
+        {rows.length === 0 && <p className="empty">{show === "owing" ? "Nobody owes anything. Nice." : show === "over" ? "Nobody is over their limit." : "No customers match."}</p>}
+      </div>
+
+      {/* List on phones and tablets */}
+      <div className="lg:hidden card divide-y divide-white/5">
+        {rows.map(c => (
+          <div key={c.id} className="flex items-center gap-3 pl-4 pr-1 py-3">
+            <div className="min-w-0 flex-1">
+              {nameOf(c, "block max-w-full truncate text-left")}
+              <p className="text-xs faint truncate">
+                {c.phone && (
+                  <a href={tel(c.phone)} className="muted underline decoration-dotted">
+                    {c.phone}
+                  </a>
+                )}
+                {c.phone && (c.notes || c.address) && " · "}
+                {[c.address, c.notes].filter(Boolean).join(" · ")}
+                {!c.phone && !c.notes && !c.address && (c.credit_limit != null ? `Limit ${money(c.credit_limit)}` : "No limit")}
+              </p>
+            </div>
+            <div className="text-right text-sm">{owed(c)}</div>
+            {menu(c, true)}
+          </div>
+        ))}
+        {rows.length === 0 && <p className="empty">{show === "owing" ? "Nobody owes anything. Nice." : show === "over" ? "Nobody is over their limit." : "No customers match."}</p>}
       </div>
 
       <CustomerModal customer={editing} open={!!editing} onClose={() => setEditing(null)} canSetLimit={canCredit} />
@@ -304,11 +423,18 @@ function HistoryModal({ customer, onClose }: { customer: Customer | null; onClos
 function HistoryList({ customer }: { customer: Customer }) {
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [requested, setRequested] = useState(false)
-  if (!requested) {
-    setRequested(true)
-    customerHistory(customer.id).then(r => (r.ok ? setEntries(r.data) : setError(r.error)))
-  }
+  // Loads once the window opens (not while rendering: a server action updates the router).
+  useEffect(() => {
+    let live = true
+    customerHistory(customer.id).then(r => {
+      if (!live) return
+      if (r.ok) setEntries(r.data)
+      else setError(r.error)
+    })
+    return () => {
+      live = false
+    }
+  }, [customer.id])
 
   if (error) return <p className="alert alert-error">{error}</p>
   if (!entries) return <p className="text-sm faint py-6 text-center">Loading…</p>
