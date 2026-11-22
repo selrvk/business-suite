@@ -20,14 +20,22 @@ export function OrderActions({ orderId, number, canCancel = true }: { orderId: n
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap gap-2">
-        <a href={`/print/receipt/${orderId}`} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" title="Print order slip">
-          <Printer size={13} />
+        <a
+          href={`/print/receipt/${orderId}`}
+          target="_blank"
+          rel="noreferrer"
+          className="btn btn-ghost btn-sm"
+          title="Print order slip"
+          aria-label={`Print order slip for #${number}`}
+        >
+          <Printer size={13} aria-hidden />
         </a>
         <button className="btn btn-good btn-sm" onClick={confirm} disabled={busy}>
           <CheckCheck size={13} /> {busy ? "Confirming…" : "Confirm"}
         </button>
         {canCancel && (
           <ConfirmButton
+            className="btn btn-ghost btn-sm"
             title={`Cancel order #${number}?`}
             message="The order will move to Sales History as cancelled. Stock isn't affected."
             confirmLabel="Cancel order"
