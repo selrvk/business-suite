@@ -63,9 +63,7 @@ export function ProductRanking({ products, showCategory }: { products: ProductPr
                   <td className="num tabular-nums muted hidden md:table-cell">{money(p.cost)}</td>
                   <td className={`num tabular-nums font-semibold ${p.profit < 0 ? "text-bad" : "text-white"}`}>{money(p.profit)}</td>
                   <td className="num hidden sm:table-cell">
-                    <span className="pill" data-tone={m == null ? undefined : m < 0 ? "bad" : m < 0.1 ? "warn" : undefined}>
-                      {percent(m)}
-                    </span>
+                    <span className={`tabular ${m == null ? "faint" : m < 0 ? "text-bad font-semibold" : m < 0.1 ? "text-warn font-semibold" : "muted"}`}>{percent(m)}</span>
                   </td>
                 </tr>
               )

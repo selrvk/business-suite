@@ -160,9 +160,9 @@ export function ProfitChart({ buckets, monthly }: { buckets: Bucket[]; monthly: 
               <tr>
                 <th>{monthly ? "Month" : "Day"}</th>
                 <th className="num">Sales</th>
-                <th className="num">Cost</th>
+                <th className="num hidden sm:table-cell">Cost</th>
                 <th className="num">Profit</th>
-                <th className="num">Margin</th>
+                <th className="num hidden sm:table-cell">Margin</th>
               </tr>
             </thead>
             <tbody>
@@ -170,11 +170,11 @@ export function ProfitChart({ buckets, monthly }: { buckets: Bucket[]; monthly: 
                 .filter(b => b.revenue > 0 || b.cost > 0)
                 .map(b => (
                   <tr key={b.key}>
-                    <td className="whitespace-nowrap">{b.long}</td>
+                    <td className="sm:whitespace-nowrap">{b.long}</td>
                     <td className="num">{money(b.revenue)}</td>
-                    <td className="num muted">{money(b.cost)}</td>
+                    <td className="num muted hidden sm:table-cell">{money(b.cost)}</td>
                     <td className={`num ${b.revenue - b.cost < 0 ? "text-bad" : "text-white"}`}>{money(b.revenue - b.cost)}</td>
-                    <td className="num muted">{percent(margin(b.revenue, b.cost))}</td>
+                    <td className="num muted hidden sm:table-cell">{percent(margin(b.revenue, b.cost))}</td>
                   </tr>
                 ))}
             </tbody>

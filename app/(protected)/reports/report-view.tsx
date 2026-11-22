@@ -2,7 +2,7 @@ import Link from "next/link"
 import { Info, PackageX, TrendingUp } from "lucide-react"
 import { DateRange } from "@/components/date-range"
 import { ExportButton } from "@/components/export-button"
-import { Empty, PageHeader, Stat } from "@/components/page-header"
+import { Empty, PageHeader } from "@/components/page-header"
 import { formatDate, money, num } from "@/lib/format"
 import { chartBuckets, margin, percent, type ProfitReport } from "@/lib/reports"
 import { ProductRanking } from "./product-ranking"
@@ -39,7 +39,7 @@ export function ReportView({
     <>
       <PageHeader
         title="Profit Report"
-        subtitle="What you sold, minus what those goods cost you. Rent, wages and other expenses aren't included."
+        subtitle="What you sold minus what those goods cost you. Rent, wages and other expenses aren't included."
       >
         {report.by_product.length > 0 && (
           <ExportButton
@@ -62,12 +62,43 @@ export function ReportView({
         <DateRange path="/reports" from={from} to={to} extra={{ slow: slowParam }} />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat label="Sales" value={money(report.revenue)} hint={`${num(report.sales)} sale${report.sales === 1 ? "" : "s"} · ${num(report.items_sold)} items`} tone="info" />
-        <Stat label="Cost of the goods" value={money(report.cost)} hint="What you paid for what you sold" />
-        <Stat label="Profit" value={money(profit)} tone={profit < 0 ? "bad" : "good"} hint={report.discounts > 0 ? `After ${money(report.discounts)} in discounts` : undefined} />
-        <Stat label="Margin" value={percent(margin(report.revenue, report.cost))} tone="brand" hint="Profit as a share of sales" />
-      </div>
+      <section className="card summary rise mb-4" data-lead="" aria-labelledby="report-profit">
+        <div className="grid gap-x-10 lg:grid-cols-2 lg:items-start">
+          <div className="min-w-0">
+            <h2 id="report-profit" className="stat-label">
+              Profit
+            </h2>
+            <p className="summary-value" data-tone={profit < 0 ? "bad" : undefined}>
+              {money(profit)}
+            </p>
+            <p className="stat-hint">
+              {percent(margin(report.revenue, report.cost))} margin · {num(report.sales)} sale{report.sales === 1 ? "" : "s"} · {num(report.items_sold)} items
+            </p>
+          </div>
+          <ul className="summary-rows lg:mt-0 lg:border-t-0" aria-label="How it adds up">
+            <li>
+              <div className="summary-row">
+                <span>Sales</span>
+                <span className="summary-num">{money(report.revenue)}</span>
+              </div>
+            </li>
+            <li>
+              <div className="summary-row">
+                <span>Cost of the goods</span>
+                <span className="summary-num">−{money(report.cost)}</span>
+              </div>
+            </li>
+            {report.discounts > 0 && (
+              <li>
+                <div className="summary-row">
+                  <span>Discounts given (already off the sales)</span>
+                  <span className="summary-num">{money(report.discounts)}</span>
+                </div>
+              </li>
+            )}
+          </ul>
+        </div>
+      </section>
 
       {(report.estimated_lines > 0 || noCost > 0) && (
         <div className="flex flex-col gap-1.5 mb-6 text-xs muted">
@@ -95,17 +126,15 @@ export function ReportView({
         </div>
       )}
 
-      <section className="card mb-6">
-        <div className="card-header">
-          <h2 className="display text-xl text-white">{monthly ? "By month" : "By day"}</h2>
-        </div>
-        <div className="card-body">
+      <section className="mb-8">
+        <h2 className="section-title mb-3">{monthly ? "By month" : "By day"}</h2>
+        <div className="card card-body">
           <ProfitChart buckets={buckets} monthly={monthly} />
         </div>
       </section>
 
       <section className="mb-8">
-        <h2 className="display text-2xl text-white mb-3">Best sellers</h2>
+        <h2 className="section-title mb-3">Best sellers</h2>
         {report.by_product.length ? (
           <ProductRanking products={report.by_product} showCategory={showCategories} />
         ) : (
@@ -117,13 +146,13 @@ export function ReportView({
 
       {showCategories && (
         <section className="mb-8">
-          <h2 className="display text-2xl text-white mb-3">By category</h2>
+          <h2 className="section-title mb-3">By category</h2>
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
                   <th>Category</th>
-                  <th className="num">Sold</th>
+                  <th className="num hidden sm:table-cell">Sold</th>
                   <th className="num">Sales</th>
                   <th className="num">Profit</th>
                   <th className="num hidden sm:table-cell">Share of sales</th>
@@ -132,8 +161,11 @@ export function ReportView({
               <tbody>
                 {report.by_category.map(c => (
                   <tr key={c.category || "none"}>
-                    <td className={c.category ? "text-white" : "faint"}>{c.category || "No category"}</td>
-                    <td className="num tabular-nums">{num(c.quantity)}</td>
+                    <td>
+                      <p className={c.category ? "text-white" : "faint"}>{c.category || "No category"}</p>
+                      <p className="text-[0.72rem] faint sm:hidden">{num(c.quantity)} sold</p>
+                    </td>
+                    <td className="num tabular-nums hidden sm:table-cell">{num(c.quantity)}</td>
                     <td className="num tabular-nums">{money(c.revenue)}</td>
                     <td className={`num tabular-nums font-semibold ${c.revenue - c.cost < 0 ? "text-bad" : "text-white"}`}>{money(c.revenue - c.cost)}</td>
                     <td className="num muted hidden sm:table-cell">{percent(report.revenue > 0 ? c.revenue / report.revenue : null)}</td>
@@ -148,7 +180,7 @@ export function ReportView({
       <section>
         <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
           <div>
-            <h2 className="display text-2xl text-white">Slow movers</h2>
+            <h2 className="section-title">Slow movers</h2>
             <p className="text-xs muted mt-1">
               In stock but not sold in the last {slow} days, most money tied up first.
               {tiedUp > 0 && ` About ${money(tiedUp)} at cost.`}
@@ -174,18 +206,21 @@ export function ReportView({
                   <th>Product</th>
                   <th className="num">In stock</th>
                   <th className="num">Value at cost</th>
-                  <th className="num">Last sold</th>
+                  <th className="num hidden sm:table-cell">Last sold</th>
                 </tr>
               </thead>
               <tbody>
                 {report.slow_movers.map(s => (
                   <tr key={s.id}>
-                    <td className="text-white">{s.name}</td>
+                    <td>
+                      <p className="text-white">{s.name}</p>
+                      <p className="text-[0.72rem] faint sm:hidden">Last sold {s.last_sold ? formatDate(s.last_sold) : "never"}</p>
+                    </td>
                     <td className="num tabular-nums">
                       {num(s.current_stock)} <span className="faint text-xs">{s.unit}</span>
                     </td>
                     <td className="num tabular-nums">{money(s.value)}</td>
-                    <td className="num muted whitespace-nowrap">{s.last_sold ? formatDate(s.last_sold) : "Never"}</td>
+                    <td className="num muted whitespace-nowrap hidden sm:table-cell">{s.last_sold ? formatDate(s.last_sold) : "Never"}</td>
                   </tr>
                 ))}
               </tbody>

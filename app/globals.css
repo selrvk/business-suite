@@ -295,6 +295,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .summary-value[data-tone="bad"] {
+    color: var(--app-danger);
+  }
   .summary[data-lead] .summary-value {
     font-size: clamp(2.75rem, 5vw, 3.5rem);
   }
