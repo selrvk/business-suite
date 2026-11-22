@@ -1,6 +1,6 @@
 import { DbError } from "@/components/db-error"
-import { PageHeader } from "@/components/page-header"
 import { requireAdminPage } from "@/lib/auth"
+import { toYmd } from "@/lib/format"
 import { ActivityList, type ActivityRow } from "./activity-list"
 
 export const metadata = { title: "Activity Log" }
@@ -14,13 +14,5 @@ export default async function ActivityPage() {
     .limit(1000)
   if (error) return <DbError error={error} />
 
-  return (
-    <>
-      <PageHeader
-        title="Activity Log"
-        subtitle="Who changed prices, gave discounts, voided sales, corrected stock and more. Only owners and admins see this, and nobody can edit it."
-      />
-      <ActivityList rows={(data ?? []) as ActivityRow[]} />
-    </>
-  )
+  return <ActivityList rows={(data ?? []) as ActivityRow[]} today={toYmd()} />
 }
