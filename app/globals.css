@@ -806,6 +806,35 @@
   .seg-count[data-tone="bad"] {
     color: var(--app-danger);
   }
+  /* Settings: jump list of the page's sections (chips on phones, a side list on wide screens). */
+  .settings-jump {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--app-muted);
+    border: 1px solid var(--app-border-strong);
+    border-radius: 999px;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .settings-jump:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .settings-jump:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  @media (min-width: 80rem) {
+    .settings-jump {
+      display: flex;
+      border: 0;
+      border-radius: 8px;
+      padding: 0.45rem 0.7rem;
+      font-size: 0.85rem;
+    }
+  }
   /* A product name that opens its edit form. */
   .product-name {
     font-weight: 500;

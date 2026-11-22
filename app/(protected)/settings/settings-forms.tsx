@@ -1,9 +1,16 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Check, Copy, ImageUp, KeyRound, ShieldCheck, ShieldOff, SlidersHorizontal, Trash2, UserPlus } from "lucide-react"
+import { Check, Copy, ImageUp, KeyRound, MoreHorizontal, ShieldCheck, ShieldOff, SlidersHorizontal, Trash2, UserPlus } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
-import { ConfirmButton, Modal } from "@/components/modal"
+import { ConfirmDialog, Modal } from "@/components/modal"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { formatDate } from "@/lib/format"
 import { shrinkImage } from "@/lib/image"
 import type { Business, Role } from "@/lib/types"
@@ -207,6 +214,8 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
   const [isAdmin, setIsAdmin] = useState(false)
   const [resetting, setResetting] = useState<UserRow | null>(null)
   const [permitting, setPermitting] = useState<UserRow | null>(null)
+  const [promoting, setPromoting] = useState<UserRow | null>(null)
+  const [removing, setRemoving] = useState<UserRow | null>(null)
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -219,7 +228,7 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
     const name = String(form.get("username")).trim().toLowerCase()
     setStatus({
       ok: true,
-      text: `${name} can log in now: at ${staffLink} with the username "${name}", or on the main login page as "${name}@${slug}".${isAdmin ? "" : " They start as a cashier; use the sliders button to allow more."}`,
+      text: `${name} can log in now: at ${staffLink} with the username "${name}", or on the main login page as "${name}@${slug}".${isAdmin ? "" : " They start as a cashier; use their menu (⋯) to allow more."}`,
     })
     formEl.reset()
     setIsAdmin(false)
@@ -250,7 +259,7 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
         </button>
         <p className="text-xs faint">
           Staff use their username at your staff login link (above). People who only clock in with a badge don&apos;t need a login;
-          add them under Employees.
+          add them under Staff → Employees.
         </p>
       </form>
 
@@ -279,39 +288,32 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
                     </p>
                   )}
                 </div>
-                <span className="pill" data-tone={u.role === "owner" ? "brand" : isAdmin ? "info" : undefined}>
-                  {u.role === "owner" ? "Owner" : isAdmin ? "Admin" : "Staff"}
-                </span>
+                <span className="pill">{u.role === "owner" ? "Owner" : isAdmin ? "Admin" : "Staff"}</span>
                 {!me && u.role !== "owner" && (
-                  <span className="flex">
-                    {u.role === "staff" && (
-                      <button className="btn btn-ghost btn-icon" title="What they can do" onClick={() => setPermitting(u)}>
-                        <SlidersHorizontal size={14} />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" className="btn btn-ghost btn-icon" aria-label={`Actions for ${u.username}`}>
+                        <MoreHorizontal size={16} />
                       </button>
-                    )}
-                    <button className="btn btn-ghost btn-icon" title="Reset password" onClick={() => setResetting(u)}>
-                      <KeyRound size={14} />
-                    </button>
-                    <ConfirmButton
-                      className="btn btn-ghost btn-icon"
-                      title={isAdmin ? `Make ${u.username} staff?` : `Make ${u.username} an admin?`}
-                      message={isAdmin ? "They'll lose admin powers." : "They'll be able to manage users, delete records and change settings."}
-                      confirmLabel={isAdmin ? "Make staff" : "Make admin"}
-                      danger={isAdmin}
-                      action={() => setAdmin(u.user_id, !isAdmin)}
-                    >
-                      {isAdmin ? <ShieldOff size={14} /> : <ShieldCheck size={14} />}
-                    </ConfirmButton>
-                    <ConfirmButton
-                      className="btn btn-ghost btn-icon"
-                      title={`Remove ${u.username}?`}
-                      message="They won't be able to log in anymore. Their past sales and records stay."
-                      confirmLabel="Remove"
-                      action={() => removeUser(u.user_id)}
-                    >
-                      <Trash2 size={14} />
-                    </ConfirmButton>
-                  </span>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {u.role === "staff" && (
+                        <DropdownMenuItem onSelect={() => setPermitting(u)}>
+                          <SlidersHorizontal /> What they can do
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onSelect={() => setResetting(u)}>
+                        <KeyRound /> Reset password
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setPromoting(u)}>
+                        {isAdmin ? <ShieldOff /> : <ShieldCheck />} {isAdmin ? "Make staff" : "Make admin"}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onSelect={() => setRemoving(u)}>
+                        <Trash2 /> Remove login
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
             )
@@ -325,6 +327,23 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
       <Modal open={!!permitting} onClose={() => setPermitting(null)} title={permitting ? `What ${permitting.username} can do` : "Permissions"} width={480}>
         {permitting && <PermissionsForm key={permitting.user_id} user={permitting} onClose={() => setPermitting(null)} />}
       </Modal>
+      <ConfirmDialog
+        open={!!promoting}
+        onClose={() => setPromoting(null)}
+        title={promoting ? (promoting.role !== "staff" ? `Make ${promoting.username} staff?` : `Make ${promoting.username} an admin?`) : ""}
+        message={promoting?.role !== "staff" ? "They'll lose admin powers." : "They'll be able to manage users, delete records and change settings."}
+        confirmLabel={promoting?.role !== "staff" ? "Make staff" : "Make admin"}
+        danger={promoting?.role !== "staff"}
+        action={() => setAdmin(promoting!.user_id, promoting!.role === "staff")}
+      />
+      <ConfirmDialog
+        open={!!removing}
+        onClose={() => setRemoving(null)}
+        title={`Remove ${removing?.username ?? "this login"}?`}
+        message="They won't be able to log in anymore. Their past sales and records stay."
+        confirmLabel="Remove"
+        action={() => removeUser(removing!.user_id)}
+      />
     </div>
   )
 }
