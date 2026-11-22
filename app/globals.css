@@ -914,7 +914,13 @@
   .faint,
   .display,
   .table th,
-  .table td {
+  .table td,
+  .summary-value,
+  .summary-num,
+  .summary-row,
+  .stat-label,
+  .stat-hint,
+  .stat-value {
     color: #000 !important;
   }
   .pill {

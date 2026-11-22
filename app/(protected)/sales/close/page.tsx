@@ -1,5 +1,6 @@
 import { DbError } from "@/components/db-error"
 import { PageHeader } from "@/components/page-header"
+import { PrintButton } from "@/components/print-button"
 import { requireModule, requireUser } from "@/lib/auth"
 import { dayRange, isYmd, toYmd } from "@/lib/format"
 import type { DaySummary } from "@/lib/notify"
@@ -27,7 +28,9 @@ export default async function CloseDayPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="End of Day"
         subtitle="The day's sales and payments, and a count of the cash drawer. Close the day before going home."
-      />
+      >
+        <PrintButton className="btn btn-secondary" />
+      </PageHeader>
       <CloseDay
         day={day}
         today={today}

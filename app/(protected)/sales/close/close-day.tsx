@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { CheckCircle2, Lock, Printer } from "lucide-react"
-import { Stat } from "@/components/page-header"
+import { CheckCircle2, Lock } from "lucide-react"
 import { formatDate, formatDateTime, money, num } from "@/lib/format"
 import type { DaySummary } from "@/lib/notify"
 import { closeDay } from "./actions"
@@ -52,25 +52,67 @@ export function CloseDay({ day, today, summary, closing, recent }: { day: string
           <input className="input w-44" type="date" value={day} max={today} onChange={e => e.target.value && router.push(`/sales/close?day=${e.target.value}`)} />
         </label>
         {closing && (
-          <span className="pill" data-tone="good">
-            <Lock size={11} className="inline -mt-0.5" /> Closed by {closing.username ?? "someone"}, {formatDateTime(closing.updated_at)}
+          <span className="pill">
+            <Lock size={11} className="inline -mt-0.5" aria-hidden /> Closed by {closing.username ?? "someone"}, {formatDateTime(closing.updated_at)}
           </span>
         )}
-        <button className="btn btn-secondary ml-auto" onClick={() => window.print()}>
-          <Printer size={14} /> Print
-        </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Sales" value={money(summary.net)} hint={`${num(summary.sales)} sale${summary.sales === 1 ? "" : "s"} · ${num(summary.items_sold)} items`} tone="good" />
-        <Stat
-          label="Discounts"
-          value={money(summary.discounts)}
-          hint={summary.senior_pwd ? `${summary.senior_pwd} Senior/PWD sale${summary.senior_pwd === 1 ? "" : "s"}` : "No Senior/PWD sales"}
-        />
-        <Stat label="Put on credit" value={money(summary.credit_given)} tone={summary.credit_given > 0 ? "warn" : undefined} />
-        <Stat label="Voided" value={money(summary.voided_total)} hint={`${summary.voids} sale${summary.voids === 1 ? "" : "s"}`} tone={summary.voids ? "bad" : undefined} />
-      </div>
+      <section className="card summary rise" data-lead="" aria-labelledby="day-sales">
+        <div className="grid gap-x-10 lg:grid-cols-2 lg:items-start">
+          <div className="min-w-0">
+            <h2 id="day-sales" className="stat-label">
+              Sales {day === today ? "today" : `on ${formatDate(day)}`}
+            </h2>
+            <p className="summary-value">{money(summary.net)}</p>
+            <p className="stat-hint">
+              {num(summary.sales)} sale{summary.sales === 1 ? "" : "s"} · {num(summary.items_sold)} items
+            </p>
+          </div>
+          <ul className="summary-rows lg:mt-0 lg:border-t-0" aria-label="Also this day">
+            <li>
+              <div className="summary-row">
+                <span>
+                  Discounts
+                  {summary.senior_pwd > 0 && (
+                    <span className="faint">
+                      {" "}
+                      · {summary.senior_pwd} Senior/PWD sale{summary.senior_pwd === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </span>
+                <span className="summary-num" data-zero={Number(summary.discounts) === 0 ? "" : undefined}>
+                  {money(summary.discounts)}
+                </span>
+              </div>
+            </li>
+            <li>
+              <div className="summary-row">
+                <span>Put on credit</span>
+                <span className="summary-num" data-zero={Number(summary.credit_given) === 0 ? "" : undefined}>
+                  {money(summary.credit_given)}
+                </span>
+              </div>
+            </li>
+            <li>
+              <div className="summary-row">
+                <span>
+                  Voided
+                  {summary.voids > 0 && (
+                    <span className="faint">
+                      {" "}
+                      · {summary.voids} sale{summary.voids === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </span>
+                <span className="summary-num" data-tone={summary.voids > 0 ? "warn" : undefined} data-zero={summary.voids === 0 ? "" : undefined}>
+                  {money(summary.voided_total)}
+                </span>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="card card-body flex flex-col gap-3 print-break">
@@ -158,8 +200,8 @@ export function CloseDay({ day, today, summary, closing, recent }: { day: string
               <thead>
                 <tr>
                   <th>Day</th>
-                  <th>Closed by</th>
-                  <th className="num">Expected</th>
+                  <th className="hidden sm:table-cell">Closed by</th>
+                  <th className="num hidden sm:table-cell">Expected</th>
                   <th className="num">Counted</th>
                   <th className="num">Over / short</th>
                 </tr>
@@ -168,13 +210,20 @@ export function CloseDay({ day, today, summary, closing, recent }: { day: string
                 {recent.map(c => {
                   const d = Number(c.difference ?? 0)
                   return (
-                    <tr key={c.day} className="cursor-pointer" onClick={() => router.push(`/sales/close?day=${c.day}`)}>
-                      <td className="text-white">{formatDate(c.day)}</td>
-                      <td className="muted">{c.username ?? "—"}</td>
-                      <td className="num muted">{money(c.expected_cash)}</td>
+                    <tr key={c.day}>
+                      <td>
+                        <Link href={`/sales/close?day=${c.day}`} className="product-name whitespace-nowrap">
+                          {formatDate(c.day)}
+                        </Link>
+                        <p className="text-[0.72rem] faint sm:hidden">{c.username ?? "—"}</p>
+                      </td>
+                      <td className="muted hidden sm:table-cell">{c.username ?? "—"}</td>
+                      <td className="num muted hidden sm:table-cell">{money(c.expected_cash)}</td>
                       <td className="num">{c.counted_cash != null ? money(c.counted_cash) : "—"}</td>
                       <td className="num">
-                        <span className={d === 0 ? "text-good" : d > 0 ? "text-warn" : "text-bad"}>{d === 0 ? "Exact" : `${d > 0 ? "+" : "−"}${money(Math.abs(d))}`}</span>
+                        <span className={d === 0 ? "muted" : d > 0 ? "text-warn font-semibold" : "text-bad font-semibold"}>
+                          {d === 0 ? "Exact" : `${d > 0 ? "Over " : "Short "}${money(Math.abs(d))}`}
+                        </span>
                       </td>
                     </tr>
                   )
