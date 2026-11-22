@@ -2,9 +2,16 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { Flag, Fuel, Pencil, Play, Plus, Printer, RefreshCw, Trash2, Truck } from "lucide-react"
+import { Flag, Fuel, MoreHorizontal, Pencil, Play, Plus, Printer, RefreshCw, Trash2, Truck } from "lucide-react"
 import { generateCode } from "@/components/barcode"
-import { ConfirmButton, Modal } from "@/components/modal"
+import { ConfirmDialog, Modal } from "@/components/modal"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Empty } from "@/components/page-header"
 import { ScanInput, blockEnter, codeFieldProps } from "@/components/scan-input"
 import { useNow } from "@/hooks/use-now"
@@ -32,6 +39,7 @@ export function FleetBoard({
   isAdmin: boolean
 }) {
   const [panel, setPanel] = useState<Panel | null>(null)
+  const [deleting, setDeleting] = useState<Vehicle | null>(null)
   const [code, setCode] = useState("")
   const [notice, setNotice] = useState<string | null>(null)
   const now = useNow()
@@ -60,14 +68,7 @@ export function FleetBoard({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <ScanInput value={code} onChange={setCode} onEnter={handleCode} placeholder="Scan a vehicle tag or type its plate number" className="flex-1" autoFocus={false} />
-        {isAdmin && (
-          <button className="btn btn-primary" onClick={() => setPanel({ kind: "vehicle", vehicle: null })}>
-            <Plus size={15} /> Add vehicle
-          </button>
-        )}
-      </div>
+      <ScanInput value={code} onChange={setCode} onEnter={handleCode} placeholder="Scan a vehicle tag or type its plate number" autoFocus={false} />
       {notice && <p className="alert alert-error">{notice}</p>}
 
       {vehicles.length === 0 ? (
@@ -81,7 +82,7 @@ export function FleetBoard({
           {vehicles.map(v => {
             const trip = openByVehicle.get(v.id)
             return (
-              <article key={v.id} className="card p-5 flex flex-col gap-4" style={{ opacity: v.active ? 1 : 0.5, borderTop: `3px solid ${trip ? "var(--app-success)" : "var(--app-border-strong)"}` }}>
+              <article key={v.id} className="card p-5 flex flex-col gap-4" style={{ opacity: v.active ? 1 : 0.55 }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="display text-2xl text-white truncate">{v.name}</p>
@@ -94,7 +95,7 @@ export function FleetBoard({
                       On trip
                     </span>
                   ) : (
-                    <span className="pill">{v.active ? "Available" : "Inactive"}</span>
+                    !v.active && <span className="pill">Inactive</span>
                   )}
                 </div>
 
@@ -134,25 +135,31 @@ export function FleetBoard({
                     <Fuel size={13} /> Fuel
                   </button>
                   <span className="flex-1" />
-                  <Link href={`/print/labels/vehicles?ids=${v.id}`} target="_blank" className="btn btn-ghost btn-icon" title="Print tag">
-                    <Printer size={14} />
-                  </Link>
-                  {isAdmin && (
-                    <>
-                      <button className="btn btn-ghost btn-icon" onClick={() => setPanel({ kind: "vehicle", vehicle: v })} title="Edit">
-                        <Pencil size={14} />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" className="btn btn-ghost btn-icon" aria-label={`More for ${v.name}`}>
+                        <MoreHorizontal size={16} />
                       </button>
-                      <ConfirmButton
-                        className="btn btn-ghost btn-icon"
-                        title={`Delete ${v.name}?`}
-                        message="This also deletes all of its trips and fuel logs. Edit it and untick Active instead to keep history."
-                        confirmLabel="Delete everything"
-                        action={() => deleteVehicle(v.id)}
-                      >
-                        <Trash2 size={14} />
-                      </ConfirmButton>
-                    </>
-                  )}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link href={`/print/labels/vehicles?ids=${v.id}`} target="_blank">
+                          <Printer /> Print tag
+                        </Link>
+                      </DropdownMenuItem>
+                      {isAdmin && (
+                        <>
+                          <DropdownMenuItem onSelect={() => setPanel({ kind: "vehicle", vehicle: v })}>
+                            <Pencil /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(v)}>
+                            <Trash2 /> Delete
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </article>
             )
@@ -168,7 +175,7 @@ export function FleetBoard({
               All logs
             </Link>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap hidden lg:block">
             <table className="table">
               <thead>
                 <tr>
@@ -198,6 +205,25 @@ export function FleetBoard({
               </tbody>
             </table>
           </div>
+          <div className="lg:hidden card divide-y divide-white/5">
+            {recent.map(t => (
+              <div key={t.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-white truncate">
+                    {vehicleName(t.vehicle_id)}
+                    {t.purpose && <span className="muted"> · {t.purpose}</span>}
+                  </p>
+                  <p className="text-xs faint truncate">
+                    {formatShortDateTime(t.started_at)}
+                    {driverName(t.driver_id) && ` · ${driverName(t.driver_id)}`}
+                  </p>
+                </div>
+                <span className="text-sm text-white tabular whitespace-nowrap">
+                  {t.end_odometer != null ? `${num(t.end_odometer - t.start_odometer)} km` : <span className="pill" data-tone="good">On trip</span>}
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -224,7 +250,30 @@ export function FleetBoard({
         {panel?.kind === "fuel" && <FuelForm vehicle={panel.vehicle} onClose={close} />}
         {panel?.kind === "vehicle" && <VehicleForm key={panel.vehicle?.id ?? "new"} vehicle={panel.vehicle} onClose={close} />}
       </Modal>
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={`Delete ${deleting?.name ?? "vehicle"}?`}
+        message="This also deletes all of its trips and fuel logs. Edit it and untick Active instead to keep history."
+        confirmLabel="Delete everything"
+        action={() => deleteVehicle(deleting!.id)}
+      />
     </div>
+  )
+}
+
+/** Header button that opens the add-vehicle form (owners and admins). */
+export function AddVehicleButton() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
+        <Plus size={15} aria-hidden /> Add vehicle
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Add vehicle" width={460}>
+        {open && <VehicleForm vehicle={null} onClose={() => setOpen(false)} />}
+      </Modal>
+    </>
   )
 }
 

@@ -1,12 +1,13 @@
 import Link from "next/link"
-import { Printer, Route } from "lucide-react"
+import { Printer } from "lucide-react"
 import { DbError } from "@/components/db-error"
-import { PageHeader, Stat } from "@/components/page-header"
+import { PageHeader } from "@/components/page-header"
 import { requireModule, requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
-import { dayRange, monthStart, num, toYmd } from "@/lib/format"
+import { dayRange, monthStart, toYmd } from "@/lib/format"
 import type { Employee, Trip, Vehicle } from "@/lib/types"
-import { FleetBoard } from "./fleet-board"
+import { AddVehicleButton, FleetBoard } from "./fleet-board"
+import { FleetSummary } from "./fleet-summary"
 
 export const metadata = { title: "Vehicles" }
 
@@ -40,25 +41,20 @@ export default async function FleetPage() {
   const totalKm = [...monthKm.values()].reduce((a, b) => a + b, 0)
   const openTrips = openResult.data as Trip[]
 
+  const active = vehicles.filter(v => v.active).length
+
   return (
     <>
       <PageHeader title="Vehicles" subtitle="Scan a vehicle's tag (or tap its card) to start or end a trip and log fuel.">
-        <Link href="/fleet/logs" className="btn btn-secondary">
-          <Route size={14} /> Trip &amp; fuel logs
-        </Link>
         {vehicles.length > 0 && (
           <Link href="/print/labels/vehicles" target="_blank" className="btn btn-secondary">
-            <Printer size={14} /> Print tags
+            <Printer size={14} aria-hidden /> Print tags
           </Link>
         )}
+        {isAdmin && <AddVehicleButton />}
       </PageHeader>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-        <Stat label="Vehicles" value={vehicles.filter(v => v.active).length} />
-        <Stat label="On the road" value={openTrips.length} tone={openTrips.length ? "good" : undefined} />
-        <Stat label="Km this month" value={num(totalKm)} tone="brand" />
-        <Stat label="Trips this month" value={(monthResult.data ?? []).length} tone="info" />
-      </div>
+      {vehicles.length > 0 && <FleetSummary onRoad={openTrips.length} vehicles={active} km={totalKm} trips={(monthResult.data ?? []).length} />}
 
       <FleetBoard
         vehicles={vehicles}
