@@ -1,10 +1,10 @@
 import { DbError } from "@/components/db-error"
 import { ExportButton } from "@/components/export-button"
-import { PageHeader, Stat } from "@/components/page-header"
+import { PageHeader } from "@/components/page-header"
 import { requireModule, requireOption, requireUser } from "@/lib/auth"
 import { fetchAll } from "@/lib/db"
-import { EXPIRY_SOON_DAYS, daysUntil } from "@/lib/expiry"
-import { num, toYmd } from "@/lib/format"
+import { daysUntil } from "@/lib/expiry"
+import { toYmd } from "@/lib/format"
 import { ExpiryBoard, type BatchRow, type UndatedProduct } from "./expiry-board"
 
 export const metadata = { title: "Expiry Dates" }
@@ -40,10 +40,6 @@ export default async function ExpiryPage() {
     .map(i => ({ id: i.id, name: i.name, unit: i.unit, undated: i.current_stock - (dated[i.id] ?? 0) }))
     .filter(i => i.undated > 0)
 
-  const withDate = batches.data.filter(b => b.expires_on)
-  const expired = withDate.filter(b => b.expires_on! < today)
-  const soon = withDate.filter(b => b.expires_on! >= today && daysUntil(b.expires_on!, today) <= EXPIRY_SOON_DAYS)
-
   const exportRows = batches.data.map(b => ({
     Product: b.items?.name ?? "",
     Barcode: b.items?.barcode ?? "",
@@ -64,13 +60,6 @@ export default async function ExpiryPage() {
       >
         <ExportButton rows={exportRows} filename={`expiry_${today}`} sheet="Expiry dates" />
       </PageHeader>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <Stat label="Expired, still in stock" value={expired.length} hint={`${num(expired.reduce((s, b) => s + b.quantity, 0))} units`} tone={expired.length ? "bad" : "good"} />
-        <Stat label={`Expiring in ${EXPIRY_SOON_DAYS} days`} value={soon.length} hint={`${num(soon.reduce((s, b) => s + b.quantity, 0))} units`} tone={soon.length ? "warn" : "good"} />
-        <Stat label="Batches with dates" value={withDate.length} tone="info" />
-        <Stat label="Products without dates" value={undated.length} hint="Stock on hand with no expiry recorded" />
-      </div>
 
       <ExpiryBoard batches={batches.data} undated={undated} today={today} />
     </>

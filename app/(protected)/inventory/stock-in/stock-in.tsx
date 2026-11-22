@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { CalendarPlus, PackageCheck, Plus, Trash2 } from "lucide-react"
 import { useBusinessFeatures, useCan } from "@/components/business-features"
 import { ScanInput } from "@/components/scan-input"
@@ -32,6 +32,16 @@ export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: It
   const [message, setMessage] = useState<{ tone: "good" | "bad" | "warn"; text: string } | null>(null)
   const [unknown, setUnknown] = useState<string | null>(null)
   const [creating, setCreating] = useState<string | null>(null)
+  // Phones: the delivery panel sits below the list, so a bar at the bottom jumps to it (hidden while it's on screen).
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [panelInView, setPanelInView] = useState(false)
+  useEffect(() => {
+    const el = panelRef.current
+    if (!el || typeof IntersectionObserver === "undefined") return
+    const observer = new IntersectionObserver(([entry]) => setPanelInView(entry.isIntersecting), { rootMargin: "0px 0px -20% 0px" })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const byId = useMemo(() => new Map(items.map(i => [i.id, i])), [items])
   const matches = useMemo(() => {
@@ -99,7 +109,7 @@ export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: It
   const totalUnits = lines.reduce((s, l) => s + l.qty, 0)
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px] items-start">
+    <div className={`grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start ${lines.length ? "pb-24 lg:pb-0" : ""}`}>
       <div className="flex flex-col gap-4 min-w-0">
         <div className="relative">
           <ScanInput
@@ -206,7 +216,7 @@ export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: It
         </div>
       </div>
 
-      <div className="card card-body flex flex-col gap-4 lg:sticky lg:top-8">
+      <div ref={panelRef} className="card card-body flex flex-col gap-4 lg:sticky lg:top-8 scroll-mt-20">
         <p className="section-title">Delivery</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -241,6 +251,24 @@ export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: It
           </button>
         )}
       </div>
+
+      {lines.length > 0 && !panelInView && (
+        <div
+          className="lg:hidden no-print fixed inset-x-0 md:left-60 bottom-0 z-30 px-4 pt-3 border-t"
+          style={{ background: "var(--app-surface)", borderColor: "var(--app-border)", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        >
+          <button
+            type="button"
+            className="btn btn-primary btn-lg btn-block justify-between"
+            onClick={() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            <span className="inline-flex items-center gap-2">
+              <PackageCheck size={16} aria-hidden /> {totalUnits} unit{totalUnits === 1 ? "" : "s"}
+            </span>
+            <span>Review &amp; receive</span>
+          </button>
+        </div>
+      )}
 
       <ProductModal
         open={!!creating}

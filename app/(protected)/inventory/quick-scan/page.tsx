@@ -1,5 +1,3 @@
-import Link from "next/link"
-import { History } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { requireModule, requirePermission } from "@/lib/auth"
 import { businessModules } from "@/lib/features"
@@ -20,11 +18,7 @@ export default async function QuickScanPage() {
             {selling && " Selling to a customer? Use Point of Sale so the money is recorded too."}
           </>
         }
-      >
-        <Link href="/inventory/movements" className="btn btn-secondary">
-          <History size={14} /> Stock log
-        </Link>
-      </PageHeader>
+      />
       <QuickScan />
     </>
   )

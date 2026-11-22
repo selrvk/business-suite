@@ -187,7 +187,7 @@ export function QuickScan() {
               <span className="text-good font-semibold">+{num(inUnits)}</span> in · saved to the stock log
             </p>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap hidden md:block">
             <table className="table">
               <thead>
                 <tr>
@@ -239,6 +239,40 @@ export function QuickScan() {
               </tbody>
             </table>
           </div>
+
+          {/* List on phones */}
+          <ul className="md:hidden card divide-y divide-white/5">
+            {entries.map(e => (
+              <li key={e.key} className="flex items-center gap-3 pl-4 pr-2 py-3" style={{ opacity: e.status === "undone" ? 0.45 : 1 }}>
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm truncate ${e.name ? "text-white" : "mono muted"}`}>{e.name ?? e.code}</p>
+                  <p className="text-xs truncate" style={{ color: e.status === "done" ? "var(--app-faint)" : statusColor(e) }}>
+                    {e.status === "done"
+                      ? [formatTime(e.at), e.stock !== undefined ? `${num(e.stock)} ${e.unit ?? ""} left` : null, e.note || null].filter(Boolean).join(" · ")
+                      : statusText(e)}
+                  </p>
+                </div>
+                <span
+                  className={`text-sm font-semibold tabular ${
+                    e.status === "done" ? (e.change < 0 ? "text-warn" : "text-good") : e.status === "saving" ? "faint" : "faint line-through"
+                  }`}
+                >
+                  {e.change < 0 ? "−" : "+"}
+                  {Math.abs(e.change)}
+                </span>
+                {e.status === "done" && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => undo(e)} disabled={e.busy}>
+                    <Undo2 size={13} aria-hidden /> {e.busy ? "…" : "Undo"}
+                  </button>
+                )}
+                {e.status === "unknown" && (
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => setCreating(e)}>
+                    <Plus size={13} aria-hidden /> Add
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

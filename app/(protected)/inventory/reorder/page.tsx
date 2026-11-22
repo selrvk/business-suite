@@ -1,5 +1,6 @@
 import { DbError } from "@/components/db-error"
 import { PageHeader } from "@/components/page-header"
+import { PrintButton } from "@/components/print-button"
 import { requireModule, requireUser } from "@/lib/auth"
 import { hasOption } from "@/lib/features"
 import { formatDate, toYmd } from "@/lib/format"
@@ -23,7 +24,9 @@ export default async function ReorderPage() {
       <PageHeader
         title="Reorder List"
         subtitle={`Products at or below their low-stock level${bySupplier ? ", grouped by supplier" : ""}. Adjust the quantities, then copy or print the order.`}
-      />
+      >
+        {(low.data ?? []).length > 0 && <PrintButton className="btn btn-secondary" />}
+      </PageHeader>
       <ReorderList
         items={(low.data ?? []) as LowItem[]}
         suppliers={(suppliers.data ?? []) as { id: number; name: string; phone: string | null }[]}

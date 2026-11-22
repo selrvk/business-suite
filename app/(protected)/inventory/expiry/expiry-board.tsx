@@ -29,15 +29,18 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
   const [dating, setDating] = useState(false)
   const canAdjust = useCan()("adjust_stock")
 
-  const shown = useMemo(
-    () =>
-      batches.filter(b => {
-        if (filter === "all") return true
-        if (!b.expires_on) return false
-        const days = daysUntil(b.expires_on, today)
-        return filter === "expired" ? days < 0 : filter === "soon" ? days >= 0 && days <= EXPIRY_SOON_DAYS : days >= 0 && days <= EXPIRY_WATCH_DAYS
-      }),
-    [batches, filter, today],
+  const inFilter = (b: BatchRow, f: Filter) => {
+    if (f === "all") return true
+    if (!b.expires_on) return false
+    const days = daysUntil(b.expires_on, today)
+    return f === "expired" ? days < 0 : f === "soon" ? days >= 0 && days <= EXPIRY_SOON_DAYS : days >= 0 && days <= EXPIRY_WATCH_DAYS
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- inFilter only depends on today
+  const shown = useMemo(() => batches.filter(b => inFilter(b, filter)), [batches, filter, today])
+  const counts = useMemo(
+    () => Object.fromEntries((["expired", "soon", "watch", "all"] as Filter[]).map(f => [f, batches.filter(b => inFilter(b, f)).length])) as Record<Filter, number>,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- inFilter only depends on today
+    [batches, today],
   )
 
   const labels: Record<Filter, string> = {
@@ -50,21 +53,31 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="segmented">
+        <div className="segmented max-w-full overflow-x-auto" role="group" aria-label="Show">
           {(Object.keys(labels) as Filter[]).map(f => (
-            <button key={f} data-active={filter === f} onClick={() => setFilter(f)}>
+            <button key={f} type="button" data-active={filter === f} aria-pressed={filter === f} onClick={() => setFilter(f)}>
               {labels[f]}
+              <span className="seg-count" data-tone={counts[f] > 0 ? (f === "expired" ? "bad" : f === "soon" ? "warn" : undefined) : undefined}>
+                {num(counts[f])}
+              </span>
             </button>
           ))}
         </div>
-        {undated.length > 0 && canAdjust && (
-          <button className="btn btn-secondary btn-sm" onClick={() => setDating(true)}>
-            <CalendarPlus size={13} /> Add dates to stock on hand
-          </button>
-        )}
       </div>
+      {undated.length > 0 && (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs muted">
+          <span>
+            {num(undated.length)} product{undated.length === 1 ? " has" : "s have"} stock with no expiry date recorded.
+          </span>
+          {canAdjust && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDating(true)}>
+              <CalendarPlus size={13} aria-hidden /> Add dates to stock on hand
+            </button>
+          )}
+        </p>
+      )}
 
-      <div className="table-wrap">
+      <div className="table-wrap hidden md:block">
         <table className="table">
           <thead>
             <tr>
@@ -83,16 +96,18 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
                 <tr key={b.id}>
                   <td>
                     <p className="text-white">{b.items?.name}</p>
-                    <p className="text-[0.7rem] faint">{b.lot ? `Lot ${b.lot}` : "No lot number"}</p>
+                    <p className="text-[0.72rem] faint">{b.lot ? `Lot ${b.lot}` : "No lot number"}</p>
                   </td>
-                  <td className="num">
+                  <td className="num whitespace-nowrap">
                     {num(b.quantity)} <span className="faint text-xs">{b.items?.unit}</span>
                   </td>
                   <td>
-                    {e ? (
+                    {e && (e.tone === "bad" || e.tone === "warn") ? (
                       <span className="pill" data-tone={e.tone}>
-                        {e.days < 0 || e.days > EXPIRY_SOON_DAYS ? e.text : `${formatDate(b.expires_on!)} · ${e.text}`}
+                        {e.days < 0 ? e.text : `${formatDate(b.expires_on!)} · ${e.text}`}
                       </span>
+                    ) : e ? (
+                      <span className="muted whitespace-nowrap">{e.text}</span>
                     ) : (
                       <span className="faint">No date</span>
                     )}
@@ -109,8 +124,9 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
                       className={`btn btn-sm ${e && e.days < 0 ? "btn-danger" : "btn-ghost"}`}
                       onClick={() => setRemoving(b)}
                       title="Take this batch out of stock"
+                      aria-label={`Remove ${b.items?.name ?? "batch"} from stock`}
                     >
-                      <PackageMinus size={13} /> Remove
+                      <PackageMinus size={13} aria-hidden /> <span className="hidden sm:inline">Remove</span>
                     </button>
                     </>
                     )}
@@ -120,6 +136,52 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
             })}
           </tbody>
         </table>
+        {shown.length === 0 && (
+          <p className="empty">
+            {filter === "expired" ? "Nothing expired in stock." : filter === "all" ? "No batches yet. Enter expiry dates when you receive stock." : "Nothing expires in this period."}
+          </p>
+        )}
+      </div>
+
+      {/* List on phones */}
+      <div className="md:hidden card divide-y divide-white/5">
+        {shown.map(b => {
+          const e = b.expires_on ? describeExpiry(b.expires_on, today) : null
+          return (
+            <div key={b.id} className="flex items-center gap-3 pl-4 pr-1 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-white truncate">{b.items?.name}</p>
+                <p className="text-xs faint truncate">
+                  {num(b.quantity)} {b.items?.unit}
+                  {b.lot ? ` · lot ${b.lot}` : ""}
+                </p>
+                <div className="mt-1">
+                  {e && (e.tone === "bad" || e.tone === "warn") ? (
+                    <span className="pill" data-tone={e.tone}>
+                      {e.text}
+                    </span>
+                  ) : (
+                    <span className="text-xs muted">{e ? e.text : "No date"}</span>
+                  )}
+                </div>
+              </div>
+              {canAdjust && (
+                <div className="flex items-center shrink-0">
+                  <button className="btn btn-ghost btn-icon" aria-label={`Fix date or lot for ${b.items?.name ?? "batch"}`} onClick={() => setEditing(b)}>
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    className={`btn btn-icon ${e && e.days < 0 ? "btn-danger" : "btn-ghost"}`}
+                    onClick={() => setRemoving(b)}
+                    aria-label={`Remove ${b.items?.name ?? "batch"} from stock`}
+                  >
+                    <PackageMinus size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
         {shown.length === 0 && (
           <p className="empty">
             {filter === "expired" ? "Nothing expired in stock." : filter === "all" ? "No batches yet. Enter expiry dates when you receive stock." : "Nothing expires in this period."}

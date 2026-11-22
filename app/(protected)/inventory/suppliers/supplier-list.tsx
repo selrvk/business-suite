@@ -2,8 +2,15 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Mail, Pencil, Phone, Plus, Trash2 } from "lucide-react"
+import { Mail, MoreHorizontal, Pencil, Phone, Plus, Trash2 } from "lucide-react"
 import { ConfirmDialog, Modal } from "@/components/modal"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import type { Supplier } from "@/lib/types"
 import { deleteSupplier, saveSupplier } from "./actions"
 
@@ -41,19 +48,31 @@ export function SupplierList({
           <div key={s.id} className="card card-body flex flex-col gap-2">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="font-semibold text-white truncate">{s.name}</p>
+                <button type="button" className="product-name font-semibold block max-w-full truncate" onClick={() => setEditing(s)}>
+                  {s.name}
+                </button>
                 {s.contact_person && <p className="text-xs faint truncate">{s.contact_person}</p>}
               </div>
-              <div className="flex gap-1 shrink-0">
-                <button className="btn btn-ghost btn-icon" aria-label={`Edit ${s.name}`} onClick={() => setEditing(s)}>
-                  <Pencil size={14} />
-                </button>
-                {isAdmin && (
-                  <button className="btn btn-ghost btn-icon" aria-label={`Delete ${s.name}`} onClick={() => setDeleting(s)}>
-                    <Trash2 size={14} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="btn btn-ghost btn-icon shrink-0" aria-label={`Actions for ${s.name}`}>
+                    <MoreHorizontal size={16} />
                   </button>
-                )}
-              </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setEditing(s)}>
+                    <Pencil /> Edit
+                  </DropdownMenuItem>
+                  {isAdmin && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(s)}>
+                        <Trash2 /> Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <div className="flex flex-col gap-1 text-sm">
               {s.phone && (
@@ -69,8 +88,10 @@ export function SupplierList({
               {s.address && <p className="text-xs faint">{s.address}</p>}
               {s.notes && <p className="text-xs faint italic">{s.notes}</p>}
             </div>
-            <div className="flex flex-wrap items-center gap-2 mt-auto pt-2">
-              <span className="pill">{productCounts[s.id] ?? 0} products</span>
+            <div className="flex flex-wrap items-center gap-3 mt-auto pt-2">
+              <span className="text-xs muted">
+                {productCounts[s.id] ?? 0} product{(productCounts[s.id] ?? 0) === 1 ? "" : "s"}
+              </span>
               {lowCounts[s.id] ? (
                 <Link href="/inventory/reorder" className="pill" data-tone="warn">
                   {lowCounts[s.id]} to reorder

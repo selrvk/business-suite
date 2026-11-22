@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Check, Copy, MessageSquare, PackageCheck, Printer } from "lucide-react"
+import { Check, Copy, MessageSquare, PackageCheck } from "lucide-react"
 import { useCan } from "@/components/business-features"
 import { Empty } from "@/components/page-header"
 import { money, num } from "@/lib/format"
@@ -85,11 +85,6 @@ export function ReorderList({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-end no-print">
-        <button className="btn btn-secondary" onClick={() => window.print()}>
-          <Printer size={14} /> Print
-        </button>
-      </div>
       {groups.map(group => {
         const active = group.items.filter(i => !skipped.has(i.id))
         const total = active.reduce((s, i) => s + (qty[i.id] ?? 0) * Number(i.price_buy), 0)
@@ -118,8 +113,8 @@ export function ReorderList({
                   <tr>
                     <th className="no-print w-8" />
                     <th>Product</th>
-                    <th className="num">In stock</th>
-                    <th className="num">Low at</th>
+                    <th className="num hidden sm:table-cell">In stock</th>
+                    <th className="num hidden sm:table-cell">Low at</th>
                     <th className="num">Order</th>
                     {showCost && <th className="num hidden sm:table-cell">Cost</th>}
                   </tr>
@@ -146,18 +141,26 @@ export function ReorderList({
                         </td>
                         <td>
                           <p className="text-white">{i.name}</p>
-                          <p className="text-[0.7rem] faint">{[i.brand, i.barcode].filter(Boolean).join(" · ") || "—"}</p>
+                          <p className="text-[0.72rem] faint hidden sm:block">{[i.brand, i.barcode].filter(Boolean).join(" · ") || "—"}</p>
+                          <p className="text-[0.72rem] sm:hidden">
+                            {i.current_stock <= 0 ? <span className="text-bad font-semibold">Out of stock</span> : <span className="muted">{num(i.current_stock)} in stock</span>}
+                            <span className="faint"> · low at {num(i.reorder_level ?? defaultLevel)}</span>
+                          </p>
                         </td>
-                        <td className="num">
-                          <span className="pill" data-tone={i.current_stock <= 0 ? "bad" : "warn"}>
-                            {i.current_stock <= 0 ? "Out" : num(i.current_stock)}
-                          </span>
+                        <td className="num hidden sm:table-cell">
+                          {i.current_stock <= 0 ? (
+                            <span className="pill" data-tone="bad">
+                              Out
+                            </span>
+                          ) : (
+                            <span className="tabular text-white">{num(i.current_stock)}</span>
+                          )}
                         </td>
-                        <td className="num muted">{num(i.reorder_level ?? defaultLevel)}</td>
+                        <td className="num muted hidden sm:table-cell">{num(i.reorder_level ?? defaultLevel)}</td>
                         <td className="num">
                           <span className="inline-flex items-center gap-1.5 justify-end">
                             <input
-                              className="input input-sm w-20 text-right no-print"
+                              className="input input-sm w-16 sm:w-20 text-right no-print"
                               type="number"
                               min={0}
                               step={1}

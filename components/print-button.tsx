@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import { Printer } from "lucide-react"
 
-export function PrintButton({ auto = false, label = "Print" }: { auto?: boolean; label?: string }) {
+export function PrintButton({ auto = false, label = "Print", className = "btn btn-primary" }: { auto?: boolean; label?: string; className?: string }) {
   useEffect(() => {
     if (!auto) return
     const timer = setTimeout(() => window.print(), 400) // let barcodes/fonts render first
@@ -11,7 +11,7 @@ export function PrintButton({ auto = false, label = "Print" }: { auto?: boolean;
   }, [auto])
 
   return (
-    <button className="btn btn-primary" onClick={() => window.print()}>
+    <button type="button" className={className} onClick={() => window.print()}>
       <Printer size={15} /> {label}
     </button>
   )
