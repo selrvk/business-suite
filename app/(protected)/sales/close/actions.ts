@@ -8,9 +8,17 @@ import { dbMessage } from "@/lib/db"
 import { dayRange, isYmd } from "@/lib/format"
 import { notifyDayClosed } from "@/lib/notify"
 import type { ActionResult } from "@/lib/types"
+import { getWorkplace, locationNames } from "@/lib/locations"
 
 /** Saves the day's closing (closing the same day again replaces it) and emails the owner a copy. */
-export async function closeDay(input: { day: string; openingCash: number; countedCash: number; note: string }): Promise<ActionResult<{ expected: number; difference: number }>> {
+export async function closeDay(input: {
+  day: string
+  openingCash: number
+  countedCash: number
+  note: string
+  /** The branch closing; null: where the person works. */
+  locationId?: number | null
+}): Promise<ActionResult<{ expected: number; difference: number }>> {
   const g = await guard()
   if (!g.ok) return g
   if (!isYmd(input.day)) return { ok: false, error: "Pick a day." }
@@ -24,13 +32,30 @@ export async function closeDay(input: { day: string; openingCash: number; counte
     p_opening_cash: input.openingCash,
     p_counted_cash: input.countedCash,
     p_note: input.note,
+    p_location_id: input.locationId || null,
   })
   if (error) return { ok: false, error: dbMessage(error) }
   const result = { expected: Number(data.expected), difference: Number(data.difference) }
-  await logActivity(g.session, "day_closed", input.day, { expected: result.expected, counted: input.countedCash, difference: result.difference })
+  const workplace = await getWorkplace(g.session)
+  const place = workplace.multi && input.locationId ? (locationNames(workplace)[input.locationId] ?? null) : null
+  await logActivity(g.session, "day_closed", input.day, {
+    expected: result.expected,
+    counted: input.countedCash,
+    difference: result.difference,
+    ...(place ? { at: place } : {}),
+  })
   after(async () => {
-    const { data: closing } = await supabase.from("day_closings").select("summary").eq("day", input.day).maybeSingle()
-    if (closing) await notifyDayClosed(business, { day: input.day, by: username, summary: closing.summary, expected: result.expected, counted: input.countedCash, difference: result.difference })
+    const { data: closing } = await supabase.from("day_closings").select("summary").eq("id", data.id).maybeSingle()
+    if (closing)
+      await notifyDayClosed(business, {
+        day: input.day,
+        by: username,
+        summary: closing.summary,
+        expected: result.expected,
+        counted: input.countedCash,
+        difference: result.difference,
+        place,
+      })
   })
   revalidatePath("/sales/close")
   return { ok: true, data: result }

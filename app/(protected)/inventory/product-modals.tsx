@@ -18,6 +18,26 @@ export const UNIT_SUGGESTIONS = [
   "kg", "grams", "liters", "ml", "meters", "feet", "dozens", "pairs", "trays", "gallons",
 ]
 
+/**
+ * Where the stock in these forms is counted: one location, "all" (the total
+ * is shown; changes pick a location), or null for a business with one location.
+ */
+export type StockPlace = { id: number; name: string } | "all" | null
+
+/** The place given, or else where this login works (when the business has more than one location). */
+function usePlace(place: StockPlace | undefined): StockPlace {
+  const { locations } = useBusinessFeatures()
+  if (place !== undefined) return place
+  return locations.multi ? { id: locations.here.id, name: locations.here.name } : null
+}
+
+/** "Main store 45 · Warehouse 60", from a product's stock per location. */
+function useBreakdownText(breakdown: Record<number, number> | undefined, unit: string) {
+  const { locations } = useBusinessFeatures()
+  if (!locations.multi || !breakdown) return null
+  return locations.open.map(l => `${l.name} ${breakdown[l.id] ?? 0}`).join(" · ") + ` ${unit}`
+}
+
 /** Add a product (item = null) or edit one. */
 export function ProductModal({
   open,
@@ -25,17 +45,31 @@ export function ProductModal({
   item,
   initialBarcode = "",
   onSaved,
+  place,
+  breakdown,
 }: {
   open: boolean
   onClose: () => void
   item: Item | null
   initialBarcode?: string
   onSaved?: (id: number) => void
+  /** Where item.current_stock is counted (see StockPlace). Defaults to where this login works. */
+  place?: StockPlace
+  /** The product's stock at each location, by location id. */
+  breakdown?: Record<number, number>
 }) {
   return (
     <Modal open={open} onClose={onClose} title={item ? "Edit product" : "Add product"} width={540}>
       {/* Keyed so the form resets each time it opens for a different product. */}
-      <ProductForm key={item?.id ?? `new-${initialBarcode}`} item={item} initialBarcode={initialBarcode} onClose={onClose} onSaved={onSaved} />
+      <ProductForm
+        key={item?.id ?? `new-${initialBarcode}`}
+        item={item}
+        initialBarcode={initialBarcode}
+        onClose={onClose}
+        onSaved={onSaved}
+        place={place}
+        breakdown={breakdown}
+      />
     </Modal>
   )
 }
@@ -47,16 +81,25 @@ function ProductForm({
   initialBarcode,
   onClose,
   onSaved,
+  place,
+  breakdown,
 }: {
   item: Item | null
   initialBarcode: string
   onClose: () => void
   onSaved?: (id: number) => void
+  place?: StockPlace
+  breakdown?: Record<number, number>
 }) {
-  const { options, customFields, lowStock, seniorDefault, seniorBasicExempt } = useBusinessFeatures()
+  const { options, customFields, lowStock, seniorDefault, seniorBasicExempt, locations } = useBusinessFeatures()
   const can = useCan()
   const showCost = can("see_costs")
-  const stockLocked = !!item && !can("adjust_stock")
+  const where = usePlace(place)
+  // A new product's opening stock goes to the location shown, or where this login works.
+  const addAt = where === "all" ? { id: locations.here.id, name: locations.here.name } : where
+  const showingTotal = !!item && where === "all"
+  const stockLocked = (!!item && !can("adjust_stock")) || showingTotal
+  const spread = useBreakdownText(breakdown, item?.unit ?? "")
   const has = (o: ProductOption) => options.includes(o)
   const [barcode, setBarcode] = useState(item?.barcode ?? initialBarcode)
   const [supplierId, setSupplierId] = useState<number | null>(item?.supplier_id ?? null)
@@ -103,7 +146,9 @@ function ProductForm({
     }
     setBusy(true)
     setError(null)
-    const result = item ? await updateProduct(item.id, input, item.current_stock) : await addProduct(input)
+    const result = item
+      ? await updateProduct(item.id, input, item.current_stock, where && where !== "all" ? where.id : null)
+      : await addProduct(input, addAt?.id ?? null)
     setBusy(false)
     if (!result.ok) return setError(result.error)
     onSaved?.(item?.id ?? (result.data as { id: number }).id)
@@ -179,12 +224,21 @@ function ProductForm({
             value={openingStock}
             onChange={e => setOpeningStock(e.target.value)}
             readOnly={stockLocked}
-            title={stockLocked ? "You don't have permission to correct stock" : undefined}
+            title={showingTotal ? "The total across locations" : stockLocked ? "You don't have permission to correct stock" : undefined}
             required
           />
         </label>
       </div>
-      {item && !stockLocked && <p className="hint -mt-2">Changing the stock here is logged as a correction. For deliveries, use Stock In.</p>}
+      {showingTotal ? (
+        <p className="hint -mt-2">This is the total across locations ({spread}). To change one location&apos;s count, use Adjust stock.</p>
+      ) : item && !stockLocked ? (
+        <p className="hint -mt-2">
+          Changing the stock here is logged as a correction{where && where !== "all" ? ` at ${where.name}` : ""}. For deliveries, use Stock In.
+          {spread && <span className="block mt-0.5">{spread}</span>}
+        </p>
+      ) : !item && addAt && Number(openingStock) > 0 ? (
+        <p className="hint -mt-2">Opening stock goes to {addAt.name}.</p>
+      ) : null}
 
       {!item && has("expiry") && Number(openingStock) > 0 && (
         <div className="grid grid-cols-2 gap-3">
@@ -364,15 +418,41 @@ const REASONS: { value: StockReason; label: string; sign: 1 | -1 | 0 }[] = [
 ]
 
 /** Quick +/- on a single product's stock, with a reason for the log. */
-export function AdjustStockModal({ item, onClose }: { item: Item | null; onClose: () => void }) {
+export function AdjustStockModal({
+  item,
+  onClose,
+  place,
+  breakdown,
+}: {
+  item: Item | null
+  onClose: () => void
+  /** Where item.current_stock is counted. With "all", the form asks which location. */
+  place?: StockPlace
+  breakdown?: Record<number, number>
+}) {
   return (
     <Modal open={!!item} onClose={onClose} title="Adjust stock" width={420}>
-      {item && <AdjustForm key={item.id} item={item} onClose={onClose} />}
+      {item && <AdjustForm key={item.id} item={item} onClose={onClose} place={place} breakdown={breakdown} />}
     </Modal>
   )
 }
 
-function AdjustForm({ item, onClose }: { item: Item; onClose: () => void }) {
+function AdjustForm({
+  item,
+  onClose,
+  place,
+  breakdown,
+}: {
+  item: Item
+  onClose: () => void
+  place?: StockPlace
+  breakdown?: Record<number, number>
+}) {
+  const { locations } = useBusinessFeatures()
+  const where = usePlace(place)
+  const [pickedId, setPickedId] = useState(locations.here.id)
+  const at = where === "all" ? (locations.open.find(l => l.id === pickedId) ?? locations.here) : where
+  const now = where === "all" ? (breakdown?.[pickedId] ?? 0) : item.current_stock
   const [reason, setReason] = useState<StockReason>("adjust")
   const [direction, setDirection] = useState<1 | -1>(-1)
   const [qty, setQty] = useState("")
@@ -382,13 +462,13 @@ function AdjustForm({ item, onClose }: { item: Item; onClose: () => void }) {
 
   const sign = REASONS.find(r => r.value === reason)!.sign || direction
   const amount = Math.trunc(Number(qty)) || 0
-  const after = item.current_stock + sign * amount
+  const after = now + sign * amount
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true)
     setError(null)
-    const result = await adjustStock(item.id, sign * amount, reason, note)
+    const result = await adjustStock(item.id, sign * amount, reason, note, at?.id || null)
     setBusy(false)
     if (!result.ok) return setError(result.error)
     onClose()
@@ -399,10 +479,22 @@ function AdjustForm({ item, onClose }: { item: Item; onClose: () => void }) {
       <div>
         <p className="font-semibold text-white">{item.name}</p>
         <p className="text-xs faint">
-          Now: {item.current_stock} {item.unit}
+          Now{at ? ` at ${at.name}` : ""}: {now} {item.unit}
         </p>
       </div>
       {error && <p className="alert alert-error">{error}</p>}
+      {where === "all" && (
+        <label>
+          <span className="label">Location</span>
+          <select className="input" value={pickedId} onChange={e => setPickedId(Number(e.target.value))}>
+            {locations.open.map(l => (
+              <option key={l.id} value={l.id}>
+                {l.name} ({breakdown?.[l.id] ?? 0} {item.unit})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         <span className="label">Reason</span>
         <select className="input" value={reason} onChange={e => setReason(e.target.value as StockReason)}>

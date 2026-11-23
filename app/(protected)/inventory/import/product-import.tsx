@@ -62,7 +62,16 @@ async function downloadTemplate(options: readonly string[], customLabels: string
   XLSX.writeFile(wb, "products_template.xlsx")
 }
 
-export function ProductImport({ items, suppliers }: { items: Item[]; suppliers: Record<number, string> }) {
+export function ProductImport({
+  items,
+  suppliers,
+  place = null,
+}: {
+  items: Item[]
+  suppliers: Record<number, string>
+  /** Where the file's stock goes, when the business has more than one location (items' stock is what's there). */
+  place?: { id: number; name: string } | null
+}) {
   const router = useRouter()
   const { options, customFields } = useBusinessFeatures()
   const offered = useMemo(() => importFields(options, customFields), [options, customFields])
@@ -134,7 +143,7 @@ export function ProductImport({ items, suppliers }: { items: Item[]; suppliers: 
   async function save() {
     setSaving(true)
     setError(null)
-    const result = await importProducts(toSave.map(r => r.row), setStock)
+    const result = await importProducts(toSave.map(r => r.row), setStock, place?.id ?? null)
     setSaving(false)
     if (!result.ok) return setError(result.error)
     setDone({ ...result.data, skipped: counts.problem })
@@ -248,10 +257,12 @@ export function ProductImport({ items, suppliers }: { items: Item[]; suppliers: 
               <label className="flex items-start gap-3 text-sm">
                 <input type="checkbox" className="mt-1" checked={setStock} onChange={e => setSetStock(e.target.checked)} />
                 <span>
-                  <span className="text-white font-medium">Also change the stock of products you already have to the file&apos;s numbers</span>
+                  <span className="text-white font-medium">
+                    Also change the stock of products you already have to the file&apos;s numbers{place ? ` at ${place.name}` : ""}
+                  </span>
                   <span className="block text-xs faint">
                     Use this after a stock count. Sales made since the file was exported would be overwritten. New products
-                    always start with the file&apos;s stock. Every change is logged.
+                    always start with the file&apos;s stock{place ? `, at ${place.name}` : ""}. Every change is logged.
                   </span>
                 </span>
               </label>

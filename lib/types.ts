@@ -33,6 +33,16 @@ export type Business = {
 
 export type Role = "owner" | "admin" | "staff"
 
+/** A branch (sells) or warehouse (only stores stock). See lib/locations.ts. */
+export type Location = {
+  id: number
+  name: string
+  kind: "branch" | "warehouse"
+  address: string | null
+  is_main: boolean
+  active: boolean
+}
+
 export type Item = {
   id: number
   barcode: string | null
@@ -109,6 +119,8 @@ export type Order = {
   payment_method: string | null
   amount_tendered: number | null
   created_by: string | null
+  /** The branch it was sold at. */
+  location_id?: number | null
 }
 
 export type OrderLine = {
@@ -125,7 +137,7 @@ export type OrderLine = {
   items: { name: string; unit: string } | null
 }
 
-export type StockReason = "initial" | "receive" | "sale" | "adjust" | "return" | "out"
+export type StockReason = "initial" | "receive" | "sale" | "adjust" | "return" | "out" | "transfer"
 
 export type Employee = {
   id: number

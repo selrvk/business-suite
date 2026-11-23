@@ -205,7 +205,7 @@ async function memberOfMyBusiness(session: Session, userId: string) {
   return data
 }
 
-export async function addUser(input: { username: string; password: string; isAdmin: boolean }): Promise<ActionResult> {
+export async function addUser(input: { username: string; password: string; isAdmin: boolean; locationId?: number | null }): Promise<ActionResult> {
   const g = await guard({ admin: true })
   if (!g.ok) return g
   const username = input.username.trim().toLowerCase()
@@ -217,6 +217,11 @@ export async function addUser(input: { username: string; password: string; isAdm
   const admin = createSupabaseAdminClient()
   const { data: taken } = await admin.from("members").select("user_id").eq("business_id", business.id).eq("username", username).maybeSingle()
   if (taken) return { ok: false, error: "That username is already taken." }
+  const locationId = input.locationId ?? null
+  if (locationId !== null) {
+    const { data: loc } = await admin.from("locations").select("active").eq("id", locationId).eq("business_id", business.id).maybeSingle()
+    if (!loc?.active) return { ok: false, error: "That location is closed or doesn't exist. Reload the page." }
+  }
 
   const { data, error } = await admin.auth.admin.createUser({
     email: staffEmail(username, business.slug),
@@ -228,7 +233,14 @@ export async function addUser(input: { username: string; password: string; isAdm
   // New staff start as cashiers; the owner turns on more in Settings → Logins.
   const { error: memberError } = await admin
     .from("members")
-    .insert({ user_id: data.user.id, business_id: business.id, username, role: input.isAdmin ? "admin" : "staff", permissions: CASHIER })
+    .insert({
+      user_id: data.user.id,
+      business_id: business.id,
+      username,
+      role: input.isAdmin ? "admin" : "staff",
+      permissions: CASHIER,
+      location_id: locationId,
+    })
   if (memberError) {
     await admin.auth.admin.deleteUser(data.user.id)
     return { ok: false, error: dbMessage(memberError) }
@@ -290,8 +302,22 @@ export async function updateFeatures(input: FeaturesInput): Promise<ActionResult
   const features = cleanFeatures(input)
   if ("error" in features) return { ok: false, error: features.error }
   const { supabase, business } = g.session
+  const turningOffBranches = (business.options ?? []).includes("branches") && !features.options.includes("branches")
+  if (turningOffBranches) {
+    // Everything happens at the main location without branches, so the others must be closed first.
+    const { data: others } = await supabase.from("locations").select("name").eq("active", true).eq("is_main", false)
+    if (others?.length)
+      return {
+        ok: false,
+        error: `Close your other locations first (${others.map(l => l.name).join(", ")}) in Settings → Locations, after moving their stock to the main one.`,
+      }
+  }
   const { error } = await supabase.from("businesses").update(features).eq("id", business.id)
   if (error) return { ok: false, error: dbMessage(error) }
+  if (turningOffBranches) {
+    await createSupabaseAdminClient().from("members").update({ location_id: null }).eq("business_id", business.id)
+    updateTag("locations")
+  }
   await logActivity(g.session, "features_changed", business.name, { modules: features.modules, options: features.options })
   refresh()
   return { ok: true, data: null }

@@ -19,7 +19,22 @@ export type Closing = {
   updated_at: string
 }
 
-export function CloseDay({ day, today, summary, closing, recent }: { day: string; today: string; summary: DaySummary; closing: Closing | null; recent: Closing[] }) {
+export function CloseDay({
+  day,
+  today,
+  summary,
+  closing,
+  recent,
+  locationId = null,
+}: {
+  day: string
+  today: string
+  summary: DaySummary
+  closing: Closing | null
+  recent: Closing[]
+  /** The branch closing, when the business has more than one location. */
+  locationId?: number | null
+}) {
   const router = useRouter()
   const [opening, setOpening] = useState(closing ? String(closing.opening_cash) : "")
   const [counted, setCounted] = useState(closing?.counted_cash != null ? String(closing.counted_cash) : "")
@@ -36,7 +51,7 @@ export function CloseDay({ day, today, summary, closing, recent }: { day: string
   async function save() {
     setBusy(true)
     setStatus(null)
-    const result = await closeDay({ day, openingCash: Number(opening) || 0, countedCash: Number(counted), note })
+    const result = await closeDay({ day, openingCash: Number(opening) || 0, countedCash: Number(counted), note, locationId })
     setBusy(false)
     if (!result.ok) return setStatus({ ok: false, text: result.error })
     const d = result.data.difference

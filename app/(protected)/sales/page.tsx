@@ -3,6 +3,7 @@ import { requireModule, requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
 import { dayRange, monthStart, readRange, toYmd } from "@/lib/format"
 import { finishedInRange } from "@/lib/sales"
+import { getWorkplace, placeFilter, viewLocation } from "@/lib/locations"
 import type { Order, OrderLine } from "@/lib/types"
 import { SalesView } from "./sales-view"
 
@@ -14,7 +15,7 @@ const STATUSES = { all: "All", COMPLETED: "Completed", CANCELLED: "Cancelled" } 
 export default async function SalesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; status?: string }>
+  searchParams: Promise<{ from?: string; to?: string; status?: string; at?: string }>
 }) {
   await requireModule("sales")
   const params = await searchParams
@@ -24,11 +25,15 @@ export default async function SalesPage({
   const range = dayRange(from, to)
   const status = (params.status && params.status in STATUSES ? params.status : "all") as keyof typeof STATUSES
 
-  const [{ isAdmin, can }, ordersResult, summaryResult, cancelledResult] = await Promise.all([
-    requireUser(),
-    supabase.from("orders").select("*").or(finishedInRange(range.from, range.to, status)).order("id", { ascending: false }).limit(LIMIT),
-    supabase.rpc("sales_summary", { p_from: range.from.toISOString(), p_to: range.to.toISOString() }),
-    supabase.from("orders").select("id", { count: "exact", head: true }).or(finishedInRange(range.from, range.to, "CANCELLED")),
+  const session = await requireUser()
+  const { isAdmin, can } = session
+  const workplace = await getWorkplace(session)
+  const view = viewLocation(workplace, params.at)
+  const at = <Q extends { eq: (column: string, value: number) => Q }>(query: Q) => (view ? query.eq("location_id", view.id) : query)
+  const [ordersResult, summaryResult, cancelledResult] = await Promise.all([
+    at(supabase.from("orders").select("*").or(finishedInRange(range.from, range.to, status))).order("id", { ascending: false }).limit(LIMIT),
+    supabase.rpc("sales_summary", { p_from: range.from.toISOString(), p_to: range.to.toISOString(), p_location_id: view?.id ?? null }),
+    at(supabase.from("orders").select("id", { count: "exact", head: true }).or(finishedInRange(range.from, range.to, "CANCELLED"))),
   ])
   if (ordersResult.error) return <DbError error={ordersResult.error} />
   if (summaryResult.error) return <DbError error={summaryResult.error} />
@@ -79,6 +84,7 @@ export default async function SalesPage({
         byMethod: [...byMethod].sort((a, b) => b[1] - a[1]),
         truncated: orders.length === LIMIT,
         limit: LIMIT,
+        place: placeFilter(workplace, view),
       }}
     />
   )

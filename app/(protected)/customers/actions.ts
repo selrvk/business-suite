@@ -5,6 +5,7 @@ import { logActivity } from "@/lib/activity"
 import { guard } from "@/lib/auth"
 import { dbMessage } from "@/lib/db"
 import type { ActionResult } from "@/lib/types"
+import { getWorkplace, hereId } from "@/lib/locations"
 
 export type CustomerInput = { name: string; phone: string; address: string; notes: string; credit_limit: string }
 
@@ -56,6 +57,7 @@ export async function recordPayment(input: {
     p_method: input.method,
     p_reference: input.reference,
     p_note: input.note,
+    p_location_id: hereId(await getWorkplace(g.session)), // the money goes in this branch's drawer
   })
   if (error) return { ok: false, error: dbMessage(error) }
   const { data: customer } = await supabase.from("customers").select("name").eq("id", input.customerId).single()

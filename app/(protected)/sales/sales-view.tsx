@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { Receipt, ScanBarcode } from "lucide-react"
 import { DateRange } from "@/components/date-range"
+import { LocationFilter } from "@/components/location-filter"
+import type { PlaceFilter } from "@/lib/locations"
 import { Empty, PageHeader } from "@/components/page-header"
 import { addDays, formatDate, formatTime, formatWeekday, money, num, toYmd } from "@/lib/format"
 import type { Order } from "@/lib/types"
@@ -26,6 +28,8 @@ export type SalesData = {
   /** More orders exist than were loaded. */
   truncated: boolean
   limit: number
+  /** The location filter, when the business has more than one location. */
+  place?: PlaceFilter | null
 }
 
 const STATUS_LABELS: Record<SalesStatus, string> = {
@@ -36,7 +40,10 @@ const STATUS_LABELS: Record<SalesStatus, string> = {
 
 /** The Sales History layout. The page (page.tsx) loads the data. */
 export function SalesView({ data }: { data: SalesData }) {
-  const { from, to, status, today, isAdmin, canVoid, orders, itemsByOrder, summary, cancelled, byMethod, truncated, limit } = data
+  const { from, to, status, today, isAdmin, canVoid, orders, itemsByOrder, summary, cancelled, byMethod, truncated, limit, place = null } = data
+  const at = place && place.value !== "all" ? String(place.value) : place ? "all" : undefined
+  // Which location each sale was at, when showing several.
+  const where = (o: Order) => (place?.value === "all" && o.location_id ? place.names[o.location_id] : null)
   const counts: Record<SalesStatus, number> = {
     all: summary.count + cancelled,
     COMPLETED: summary.count,
@@ -69,19 +76,30 @@ export function SalesView({ data }: { data: SalesData }) {
     const special = g.day === today ? "Today" : g.day === addDays(today, -1) ? "Yesterday" : null
     return special ? `${special} · ${formatWeekday(g.at)}` : formatWeekday(g.at)
   }
-  const statusHref = (key: SalesStatus) => `/sales?${new URLSearchParams({ from, to, ...(key === "all" ? {} : { status: key }) })}`
+  const statusHref = (key: SalesStatus) =>
+    `/sales?${new URLSearchParams({ from, to, ...(key === "all" ? {} : { status: key }), ...(at ? { at } : {}) })}`
 
   return (
     <>
       <PageHeader title="Sales History">
-        <SalesMenu from={from} to={to} status={status} rangeLabel={rangeLabel} canDelete={isAdmin && orders.length > 0} />
+        <SalesMenu
+          from={from}
+          to={to}
+          status={status}
+          rangeLabel={rangeLabel}
+          canDelete={isAdmin && orders.length > 0}
+          at={place && place.value !== "all" ? { id: place.value, name: place.names[place.value] } : null}
+        />
         <Link href="/pos" className="btn btn-primary">
           <ScanBarcode size={15} aria-hidden /> New sale
         </Link>
       </PageHeader>
 
       <div className="flex flex-col gap-3 mb-6 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
-        <DateRange path="/sales" from={from} to={to} extra={{ status: status === "all" ? undefined : status }} />
+        <div className="flex flex-wrap items-center gap-2">
+          <DateRange path="/sales" from={from} to={to} extra={{ status: status === "all" ? undefined : status, at }} />
+          {place && <LocationFilter path="/sales" value={place.value} locations={place.locations} keep={{ from, to, status: status === "all" ? undefined : status }} />}
+        </div>
         <div className="segmented self-start" role="group" aria-label="Status">
           {(Object.keys(STATUS_LABELS) as SalesStatus[]).map(key => (
             <Link key={key} href={statusHref(key)} data-active={status === key} aria-current={status === key ? "page" : undefined}>
@@ -181,6 +199,7 @@ export function SalesView({ data }: { data: SalesData }) {
                         <td className="whitespace-nowrap muted tabular">
                           {formatTime(when(order))}
                           <span className="block xl:hidden text-[0.72rem] faint">#{order.number}</span>
+                          {where(order) && <span className="block text-[0.72rem] faint">{where(order)}</span>}
                         </td>
                         <td className="hidden xl:table-cell whitespace-nowrap faint tabular">#{order.number}</td>
                         <td className="max-w-40 truncate">{order.customer_name || <span className="faint">Walk-in</span>}</td>
@@ -236,8 +255,8 @@ export function SalesView({ data }: { data: SalesData }) {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm text-white truncate">{order.customer_name || "Walk-in"}</p>
                           <p className="text-xs faint truncate">
-                            <span className="muted tabular">{formatTime(when(order))}</span> · #{order.number} ·{" "}
-                            {itemsByOrder[order.id] || "—"}
+                            <span className="muted tabular">{formatTime(when(order))}</span> · #{order.number}
+                            {where(order) && ` · ${where(order)}`} · {itemsByOrder[order.id] || "—"}
                           </p>
                           {order.void_reason && <p className="text-xs faint truncate">Voided: {order.void_reason}</p>}
                         </div>

@@ -5,18 +5,24 @@ import { ALL_MODULES, config, type ModuleKey } from "./config"
 import type { Business } from "./types"
 
 export type BusinessType = "store" | "pharmacy" | "food" | "hardware" | "wholesale" | "other"
-export type ProductOption = "suppliers" | "categories" | "locations" | "expiry"
+export type ProductOption = "suppliers" | "categories" | "locations" | "expiry" | "branches"
 export type CustomFieldType = "text" | "number" | "date"
 export type CustomField = { id: string; label: string; type: CustomFieldType }
 
-export const ALL_OPTIONS: ProductOption[] = ["suppliers", "categories", "locations", "expiry"]
+export const ALL_OPTIONS: ProductOption[] = ["suppliers", "categories", "locations", "expiry", "branches"]
+/** The options that add details to each product (the rest are about the business). */
+export const PRODUCT_OPTIONS: ProductOption[] = ["suppliers", "categories", "locations", "expiry"]
 export const MAX_CUSTOM_FIELDS = 5
 
 export const OPTION_INFO: Record<ProductOption, { label: string; description: string }> = {
   suppliers: { label: "Suppliers", description: "Who you buy each product from, a supplier list, and reorder lists per supplier" },
   categories: { label: "Categories", description: "Group products, like Drinks, Canned goods or Medicine" },
-  locations: { label: "Shelf / storage location", description: "Where each product is kept, like Shelf A2 or Warehouse" },
+  locations: { label: "Shelf / storage location", description: "Where each product is kept, like Shelf A2 or Back room" },
   expiry: { label: "Expiry dates", description: "Expiry date and lot number for each delivery, with warnings before they expire" },
+  branches: {
+    label: "Branches & warehouses",
+    description: "Stock kept in more than one place, moved between them with transfers. Selling, closing and reports per branch",
+  },
 }
 
 export const BUSINESS_TYPES: { key: BusinessType; label: string; hint: string; modules: ModuleKey[]; options: ProductOption[] }[] = [

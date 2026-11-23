@@ -19,7 +19,13 @@ export type MenuSection = { key: string; label: string; href: string; icon: Luci
 
 type Draft = Omit<MenuSection, "tabs"> & { show: boolean; tabs: (MenuTab & { show?: boolean })[] }
 
-export function menuSections(modules: readonly string[], options: readonly string[], permissions: readonly string[]): MenuSection[] {
+export function menuSections(
+  modules: readonly string[],
+  options: readonly string[],
+  permissions: readonly string[],
+  /** More than one location is open (branches and warehouses). */
+  multi = false,
+): MenuSection[] {
   const sales = modules.includes("sales")
   const inventory = modules.includes("inventory")
   const people = modules.includes("attendance")
@@ -52,6 +58,7 @@ export function menuSections(modules: readonly string[], options: readonly strin
         { href: "/inventory", label: "Products", exact: true, also: ["/inventory/import"] },
         { href: "/inventory/stock-in", label: "Stock In" },
         { href: "/inventory/quick-scan", label: "Quick Scan", show: permissions.includes("adjust_stock") },
+        { href: "/inventory/transfers", label: "Transfers", show: multi },
         { href: "/inventory/reorder", label: "Reorder List" },
         { href: "/inventory/expiry", label: "Expiry Dates", show: options.includes("expiry") },
         { href: "/inventory/suppliers", label: "Suppliers", show: options.includes("suppliers") },

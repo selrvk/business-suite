@@ -4,6 +4,7 @@ import { requireModule, requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
 import { formatDateTime, money } from "@/lib/format"
 import type { Order, OrderLine } from "@/lib/types"
+import { getWorkplace } from "@/lib/locations"
 
 export const metadata = { title: "Receipt" }
 
@@ -20,15 +21,19 @@ export default async function ReceiptPage({
   if (!Number.isInteger(orderId)) notFound()
 
   const supabase = await getSupabase()
-  const [{ business: settings }, { data: order }, { data: lines }] = await Promise.all([
+  const [session, { data: order }, { data: lines }] = await Promise.all([
     requireUser(),
     supabase.from("orders").select("*").eq("id", orderId).maybeSingle(),
     supabase.from("order_item").select("*, items(name, unit)").eq("order_id", orderId).order("id"),
   ])
   if (!order) notFound()
 
+  const settings = session.business
   const o = order as Order
   const items = (lines ?? []) as OrderLine[]
+  // With several locations, the receipt names the branch (and its address, if it has one).
+  const { multi, locations } = await getWorkplace(session)
+  const branch = multi && o.location_id ? locations.find(l => l.id === o.location_id) : undefined
   const { data: cashier } = o.created_by
     ? await supabase.from("members").select("username").eq("user_id", o.created_by).maybeSingle()
     : { data: null }
@@ -78,7 +83,8 @@ export default async function ReceiptPage({
             <img src={settings.logo_url} alt="" style={{ maxHeight: 48, maxWidth: "60%", margin: "0 auto 6px", filter: "grayscale(1)" }} />
           )}
           <p className="big">{settings.name}</p>
-          {settings.address && <p>{settings.address}</p>}
+          {branch && <p>{branch.name}</p>}
+          {(branch?.address || settings.address) && <p>{branch?.address || settings.address}</p>}
           {settings.contact && <p>{settings.contact}</p>}
           <p style={{ marginTop: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>{title}</p>
         </div>

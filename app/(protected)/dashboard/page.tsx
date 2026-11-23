@@ -5,6 +5,7 @@ import { EXPIRY_SOON_DAYS } from "@/lib/expiry"
 import { businessModules, hasOption } from "@/lib/features"
 import { addDays, dayRange, monthStart, toYmd } from "@/lib/format"
 import { DashboardView, type DashboardData } from "./dashboard-view"
+import { getWorkplace, placeFilter, viewLocation } from "@/lib/locations"
 
 export const metadata = { title: "Dashboard" }
 
@@ -13,10 +14,18 @@ type InventorySummary = DashboardData["inventory"]
 
 const none = Promise.resolve({ data: null, error: null, count: null })
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ at?: string }> }) {
   // The business's low-stock level is needed for the queries, so get the session first
   // (fast: the membership is cached).
-  const { supabase, username, business, can, isAdmin } = await requireUser()
+  const session = await requireUser()
+  const { supabase, username, business, can, isAdmin } = session
+  const workplace = await getWorkplace(session)
+  const view = viewLocation(workplace, (await searchParams).at)
+  const loc = view?.id ?? null
+  // Queries filtered to the location shown (when one is picked).
+  const pendingQuery = supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "PENDING")
+  const recentQuery = supabase.from("orders").select("id, number, customer_name, total_price, date_completed, location_id").eq("status", "COMPLETED")
+  const batchQuery = supabase.from("stock_batches").select("id, quantity, expires_on, lot, items(name, unit)")
   const today = toYmd()
   const todayRange = dayRange(today)
   const month = dayRange(monthStart(today), today)
@@ -31,23 +40,23 @@ export default async function DashboardPage() {
   const count = { count: "exact", head: true } as const
 
   const [salesToday, salesMonth, pending, recentSales, invSummary, lowItems, inNow, onRoad, monthTrips, expiring, anySales, staffCount, vehicleCount, loginCount] = await Promise.all([
-    sales ? supabase.rpc("sales_summary", { p_from: todayRange.from.toISOString(), p_to: todayRange.to.toISOString() }) : none,
-    sales ? supabase.rpc("sales_summary", { p_from: month.from.toISOString(), p_to: month.to.toISOString() }) : none,
-    sales ? supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "PENDING") : none,
+    sales ? supabase.rpc("sales_summary", { p_from: todayRange.from.toISOString(), p_to: todayRange.to.toISOString(), p_location_id: loc }) : none,
+    sales ? supabase.rpc("sales_summary", { p_from: month.from.toISOString(), p_to: month.to.toISOString(), p_location_id: loc }) : none,
+    sales ? (view ? pendingQuery.eq("location_id", view.id) : pendingQuery) : none,
     sales
-      ? supabase.from("orders").select("id, number, customer_name, total_price, date_completed").eq("status", "COMPLETED").order("date_completed", { ascending: false }).limit(6)
+      ? (view ? recentQuery.eq("location_id", view.id) : recentQuery)
+          .order("date_completed", { ascending: false })
+          .limit(6)
       : none,
-    inventory ? supabase.rpc("inventory_summary", { p_low_stock: business.low_stock_threshold }) : none,
-    inventory ? supabase.rpc("low_stock_items", { p_low_stock: business.low_stock_threshold, p_limit: 8 }) : none,
+    inventory ? supabase.rpc("inventory_summary", { p_low_stock: business.low_stock_threshold, p_location_id: loc }) : none,
+    inventory ? supabase.rpc("low_stock_items", { p_low_stock: business.low_stock_threshold, p_limit: 8, p_location_id: loc }) : none,
     attendance ? supabase.from("attendance").select("id, clock_in, employees(name)").is("clock_out", null).order("clock_in") : none,
     fleet ? supabase.from("trips").select("id, started_at, purpose, vehicles(name), employees(name)").is("ended_at", null).order("started_at") : none,
     fleet
       ? supabase.from("trips").select("start_odometer, end_odometer").not("ended_at", "is", null).gte("started_at", month.from.toISOString()).lt("started_at", month.to.toISOString())
       : none,
     expiry
-      ? supabase
-          .from("stock_batches")
-          .select("id, quantity, expires_on, lot, items(name, unit)")
+      ? (view ? batchQuery.eq("location_id", view.id) : batchQuery)
           .gt("quantity", 0)
           .lte("expires_on", addDays(today, EXPIRY_SOON_DAYS))
           .order("expires_on")
@@ -86,7 +95,7 @@ export default async function DashboardPage() {
     items: { name: string; unit: string } | null
   }[]
   const expiredCount = soon.filter(b => b.expires_on < today).length
-  const recent = (recentSales.data ?? []) as { id: number; number: number; customer_name: string | null; total_price: number; date_completed: string }[]
+  const recent = (recentSales.data ?? []) as DashboardData["recent"]
   const now = new Date()
 
   const products = inv?.products ?? 0
@@ -181,6 +190,7 @@ export default async function DashboardPage() {
     kmMonth,
     soon,
     expiredCount,
+    place: placeFilter(workplace, view),
   }
   return <DashboardView data={data} />
 }

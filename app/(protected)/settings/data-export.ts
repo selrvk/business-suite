@@ -54,7 +54,8 @@ export async function exportTablePage(table: ExportTable, page: number): Promise
   const order: string = "order" in spec ? spec.order : "id"
   let query = supabase.from(spec.table).select(select)
   if (spec.table === "businesses") query = query.eq("id", business.id)
-  const { data, error } = await query.order(order).range(start, start + PAGE - 1)
+  const sorted = query.order(order)
+  const { data, error } = await ("tiebreak" in spec ? sorted.order(spec.tiebreak) : sorted).range(start, start + PAGE - 1)
   if (error) return { ok: false, error: dbMessage(error) }
 
   if (table === "businesses") await logActivity(g.session, "data_exported", business.name, {})

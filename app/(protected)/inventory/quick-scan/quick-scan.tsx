@@ -31,7 +31,7 @@ const MODES: Record<Mode, { label: string; color: string; icon: typeof Minus }> 
   in: { label: "Stock in", color: "var(--app-success)", icon: Plus },
 }
 
-export function QuickScan() {
+export function QuickScan({ locationId = null }: { locationId?: number | null }) {
   const [mode, setMode] = useState<Mode>("out")
   const [qty, setQty] = useState(1)
   const [note, setNote] = useState("")
@@ -62,7 +62,7 @@ export function QuickScan() {
     setEntries(prev => [{ key, code: value, change, note, at: Date.now(), status: "saving" as const }, ...prev].slice(0, 50))
 
     enqueue(key, async () => {
-      const result = await quickScan(value, change, note)
+      const result = await quickScan(value, change, note, locationId)
       if (!result.ok) {
         beep("error")
         return update(key, { status: "error", error: result.error })
@@ -81,7 +81,7 @@ export function QuickScan() {
     if (!entry.itemId) return
     update(entry.key, { busy: true })
     enqueue(entry.key, async () => {
-      const result = await undoScan(entry.itemId!, entry.change)
+      const result = await undoScan(entry.itemId!, entry.change, locationId)
       if (!result.ok) return update(entry.key, { busy: false, error: result.error })
       update(entry.key, { busy: false, status: "undone", stock: result.data, error: undefined })
     })

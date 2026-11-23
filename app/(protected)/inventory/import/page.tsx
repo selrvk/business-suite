@@ -6,6 +6,7 @@ import { requireAdminPage, requireModule } from "@/lib/auth"
 import { fetchAll } from "@/lib/db"
 import { getSupabase } from "@/lib/supabase/server"
 import type { Item } from "@/lib/types"
+import { getWorkplace, levelsAt, withStockAt } from "@/lib/locations"
 import { ProductImport } from "./product-import"
 
 export const metadata = { title: "Import products" }
@@ -13,8 +14,9 @@ export const metadata = { title: "Import products" }
 export default async function ImportProductsPage() {
   await requireModule("inventory")
   const supabase = await getSupabase()
-  const [, { data: items, error }, supplierRows] = await Promise.all([
-    requireAdminPage(),
+  const session = await requireAdminPage()
+  const workplace = await getWorkplace(session)
+  const [{ data: allItems, error }, supplierRows, stock] = await Promise.all([
     fetchAll<Item>((from, to) =>
       supabase
         .from("items")
@@ -23,8 +25,12 @@ export default async function ImportProductsPage() {
         .range(from, to),
     ),
     supabase.from("suppliers").select("id, name"),
+    workplace.multi ? levelsAt(supabase, workplace.here.id) : null,
   ])
-  if (error || supplierRows.error) return <DbError error={(error ?? supplierRows.error)!} />
+  const failed = error ?? supplierRows.error ?? stock?.error
+  if (failed) return <DbError error={failed} />
+  // With several locations, the file's stock is compared with (and goes to) where you're working.
+  const items = stock ? withStockAt(allItems, stock.levels) : allItems
   const suppliers: Record<number, string> = Object.fromEntries((supplierRows.data ?? []).map(r => [r.id, r.name]))
 
   return (
@@ -37,7 +43,7 @@ export default async function ImportProductsPage() {
           <ArrowLeft size={14} /> Products
         </Link>
       </PageHeader>
-      <ProductImport items={items} suppliers={suppliers} />
+      <ProductImport items={items} suppliers={suppliers} place={workplace.multi ? { id: workplace.here.id, name: workplace.here.name } : null} />
     </>
   )
 }

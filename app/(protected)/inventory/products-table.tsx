@@ -19,7 +19,7 @@ import { describeExpiry } from "@/lib/expiry"
 import { money, num } from "@/lib/format"
 import type { Item } from "@/lib/types"
 import { deleteProduct } from "./actions"
-import { AdjustStockModal, ProductModal } from "./product-modals"
+import { AdjustStockModal, ProductModal, type StockPlace } from "./product-modals"
 
 type SortKey = "name" | "brand" | "current_stock" | "price_sell" | "value" | "location" | "expires"
 const PAGE_SIZE = 25
@@ -29,6 +29,9 @@ export function ProductsTable({
   isAdmin,
   suppliers = {},
   expiry = {},
+  place,
+  breakdown = null,
+  locationFilter = null,
 }: {
   items: Item[]
   isAdmin: boolean
@@ -36,8 +39,17 @@ export function ProductsTable({
   suppliers?: Record<number, string>
   /** Each product's nearest expiry date (YYYY-MM-DD), by product id. */
   expiry?: Record<number, string>
+  /** Where the stock shown is counted (see StockPlace). */
+  place?: StockPlace
+  /** Each product's stock per location (product id → location id → quantity), when there's more than one. */
+  breakdown?: Record<number, Record<number, number>> | null
+  /** The location picker, shown with the other filters. */
+  locationFilter?: React.ReactNode
 }) {
-  const { options, customFields, lowStock, today } = useBusinessFeatures()
+  const { options, customFields, lowStock, today, locations } = useBusinessFeatures()
+  /** "Main store: 45 · Warehouse: 60", for hovering over a stock number. */
+  const spread = (i: Item) =>
+    breakdown && locations.multi ? locations.open.map(l => `${l.name}: ${breakdown[i.id]?.[l.id] ?? 0}`).join(" · ") : undefined
   const can = useCan()
   const showCost = can("see_costs")
   const showCategory = options.includes("categories")
@@ -157,11 +169,11 @@ export function ProductsTable({
   /** Stock with its unit; amber when low, a red "Out" when there's none. Stacked (the "Low" tag under the number) on phones. */
   const stockCell = (i: Item, stacked = false) =>
     i.current_stock <= 0 ? (
-      <span className="pill" data-tone="bad">
+      <span className="pill" data-tone="bad" title={spread(i)}>
         Out
       </span>
     ) : stacked ? (
-      <span className="inline-flex flex-col items-end gap-1 whitespace-nowrap">
+      <span className="inline-flex flex-col items-end gap-1 whitespace-nowrap" title={spread(i)}>
         <span>
           <span className={`tabular font-semibold ${isLow(i) ? "text-warn" : "text-white"}`}>{num(i.current_stock)}</span>{" "}
           <span className="faint text-xs">{i.unit}</span>
@@ -173,7 +185,7 @@ export function ProductsTable({
         )}
       </span>
     ) : (
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={spread(i)}>
         {isLow(i) && (
           <span className="pill" data-tone="warn">
             Low
@@ -269,6 +281,7 @@ export function ProductsTable({
 
       {/* Filters */}
       <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+        {locationFilter}
         <div className="flex gap-2 md:flex-1 md:min-w-64">
           <div className="relative flex-1 min-w-0">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 faint" aria-hidden />
@@ -464,13 +477,20 @@ export function ProductsTable({
       <ProductModal
         open={!!adding || !!editing}
         item={editing}
+        place={place}
+        breakdown={editing ? breakdown?.[editing.id] : undefined}
         initialBarcode={adding?.barcode}
         onClose={() => {
           setAdding(null)
           setEditing(null)
         }}
       />
-      <AdjustStockModal item={adjusting} onClose={() => setAdjusting(null)} />
+      <AdjustStockModal
+        item={adjusting}
+        onClose={() => setAdjusting(null)}
+        place={place}
+        breakdown={adjusting ? breakdown?.[adjusting.id] : undefined}
+      />
       <ConfirmDialog
         open={!!deleting}
         onClose={() => setDeleting(null)}
@@ -530,7 +550,7 @@ export function ProductsMenu({ exportRows, filename, canImport }: { exportRows: 
 }
 
 /** Header button that opens the add-product form. */
-export function AddProductButton() {
+export function AddProductButton({ place }: { place?: StockPlace }) {
   const [open, setOpen] = useState(false)
   const can = useCan()
   if (!can("edit_products")) return null
@@ -539,7 +559,7 @@ export function AddProductButton() {
       <button className="btn btn-primary" onClick={() => setOpen(true)}>
         <Plus size={15} /> Add product
       </button>
-      <ProductModal open={open} item={null} onClose={() => setOpen(false)} />
+      <ProductModal open={open} item={null} onClose={() => setOpen(false)} place={place} />
     </>
   )
 }

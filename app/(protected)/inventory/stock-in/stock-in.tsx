@@ -17,7 +17,16 @@ type Line = { key: number; id: number; qty: number; expires: string; lot: string
 
 let nextKey = 1
 
-export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: Item[]; suppliers?: { id: number; name: string }[] }) {
+export function StockIn({
+  items,
+  suppliers: initialSuppliers = [],
+  place = null,
+}: {
+  items: Item[]
+  suppliers?: { id: number; name: string }[]
+  /** Where the delivery comes in, when the business has more than one location. */
+  place?: { id: number; name: string } | null
+}) {
   const { options } = useBusinessFeatures()
   const can = useCan()
   const withExpiry = options.includes("expiry")
@@ -90,6 +99,7 @@ export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: It
       lines.map(l => ({ item_id: l.id, quantity: l.qty, expires_on: l.expires || undefined, lot: l.lot || undefined })),
       note,
       withSuppliers ? supplierId : null,
+      place?.id ?? null,
     )
     setBusy(false)
     if (!result.ok) {
@@ -98,7 +108,7 @@ export function StockIn({ items, suppliers: initialSuppliers = [] }: { items: It
     }
     const units = lines.reduce((s, l) => s + l.qty, 0)
     const products = new Set(lines.map(l => l.id)).size
-    setMessage({ tone: "good", text: `Received ${units} units across ${products} product${products === 1 ? "" : "s"}.` })
+    setMessage({ tone: "good", text: `Received ${units} units across ${products} product${products === 1 ? "" : "s"}${place ? ` at ${place.name}` : ""}.` })
     setLines([])
     setNote("")
     setSupplierId(null)

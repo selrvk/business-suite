@@ -20,11 +20,13 @@ export type Session = {
   /** What this login may do (see lib/permissions.ts). */
   can: (permission: Permission) => boolean
   permissions: Permission[]
+  /** The branch this login is based at (null: the main location). Staff only work there. */
+  homeLocationId: number | null
 }
 
-type Membership = { username: string; role: Role; permissions: string[] | null; business: Business }
+type Membership = { username: string; role: Role; permissions: string[] | null; location_id?: number | null; business: Business }
 
-const MEMBER_SELECT = "username, role, permissions, business:businesses(*)"
+const MEMBER_SELECT = "username, role, permissions, location_id, business:businesses(*)"
 
 /**
  * A login's business, username and role. These rarely change, so they're kept
@@ -106,6 +108,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     business: membership.business,
     can: permission => allowed(membership.role, membership.permissions, permission),
     permissions: effectivePermissions(membership.role, membership.permissions),
+    homeLocationId: membership.location_id ?? null,
   }
 })
 

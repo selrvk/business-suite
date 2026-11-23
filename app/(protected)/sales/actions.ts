@@ -7,6 +7,7 @@ import { dbMessage, fetchAll } from "@/lib/db"
 import { dayRange, formatDateTime } from "@/lib/format"
 import type { LineDiscount, SaleDiscount } from "@/lib/sale-math"
 import { finishedInRange } from "@/lib/sales"
+import { getWorkplace, locationNames } from "@/lib/locations"
 import type { ActionResult, Order, OrderLine } from "@/lib/types"
 import type { ExportRow } from "@/components/export-button"
 
@@ -25,6 +26,8 @@ export async function createSale(input: {
   /** A saved customer. With paidNow, what isn't paid goes on their balance. */
   customerId?: number | null
   paidNow?: number | null
+  /** Where the sale happens (the branch the POS showed); null: where the seller works. */
+  locationId?: number | null
 }): Promise<ActionResult<{ id: number; number: number; total: number; onCredit: number }>> {
   const g = await guard()
   if (!g.ok) return g
@@ -50,6 +53,7 @@ export async function createSale(input: {
     p_customer_id: input.customerId ?? null,
     p_paid_now: input.customerId && input.paidNow != null ? input.paidNow : null,
     p_payment_ref: input.paymentRef ?? null,
+    p_location_id: input.locationId || null,
   })
   if (error) return { ok: false, error: dbMessage(error) }
 
@@ -129,18 +133,16 @@ export async function deleteOrder(orderId: number): Promise<ActionResult> {
   return { ok: true, data: null }
 }
 
-/** Deletes finished (completed/cancelled) records in a date range. Admin only. */
-export async function deleteHistory(fromYmd: string, toYmd: string): Promise<ActionResult<number>> {
+/** Deletes finished (completed/cancelled) records in a date range, at one location (at) or all. Admin only. */
+export async function deleteHistory(fromYmd: string, toYmd: string, at: number | null = null): Promise<ActionResult<number>> {
   const g = await guard({ admin: true })
   if (!g.ok) return g
   const range = dayRange(fromYmd, toYmd)
-  const { data, error } = await g.session.supabase
-    .from("orders")
-    .delete()
-    .or(finishedInRange(range.from, range.to))
-    .select("id")
+  const query = g.session.supabase.from("orders").delete().or(finishedInRange(range.from, range.to))
+  const { data, error } = await (at ? query.eq("location_id", at) : query).select("id")
   if (error) return { ok: false, error: dbMessage(error) }
-  await logActivity(g.session, "history_deleted", `${fromYmd} to ${toYmd}`, { records: data?.length ?? 0 })
+  const place = at ? locationNames(await getWorkplace(g.session))[at] : null
+  await logActivity(g.session, "history_deleted", `${fromYmd} to ${toYmd}`, { records: data?.length ?? 0, ...(place ? { at: place } : {}) })
   refresh()
   return { ok: true, data: data?.length ?? 0 }
 }
@@ -150,20 +152,20 @@ export async function exportSales(
   fromYmd: string,
   toYmd: string,
   status: "all" | "COMPLETED" | "CANCELLED" = "all",
+  /** One location's sales, or null for all. */
+  at: number | null = null,
 ): Promise<ActionResult<ExportRow[]>> {
   const g = await guard()
   if (!g.ok) return g
   const { supabase } = g.session
   const range = dayRange(fromYmd, toYmd)
+  const workplace = await getWorkplace(g.session)
+  const names = locationNames(workplace)
 
-  const { data: orders, error } = await fetchAll<Order>((a, b) =>
-    supabase
-      .from("orders")
-      .select("*")
-      .or(finishedInRange(range.from, range.to, status))
-      .order("id")
-      .range(a, b),
-  )
+  const { data: orders, error } = await fetchAll<Order>((a, b) => {
+    const query = supabase.from("orders").select("*").or(finishedInRange(range.from, range.to, status))
+    return (at ? query.eq("location_id", at) : query).order("id").range(a, b)
+  })
   if (error) return { ok: false, error: dbMessage(error) }
 
   const lines: OrderLine[] = []
@@ -179,6 +181,7 @@ export async function exportSales(
     const base = {
       "Order #": order.number,
       Date: formatDateTime(order.date_completed ?? order.date_cancelled ?? order.date_created),
+      ...(workplace.multi ? { Location: (order.location_id && names[order.location_id]) || "" } : {}),
       Status: order.status,
       Customer: order.customer_name ?? "",
       Payment: order.payment_method ?? "",

@@ -6,6 +6,7 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   product_deleted: "Deleted a product",
   products_imported: "Imported products",
   stock_corrected: "Corrected stock",
+  stock_transferred: "Moved stock between locations",
   batch_removed: "Removed a batch from stock",
   sale_discount: "Gave a discount",
   sale_credit: "Sold on credit",
@@ -24,5 +25,10 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   permissions_changed: "Changed someone's permissions",
   business_changed: "Changed business details",
   features_changed: "Changed features",
+  location_added: "Added a location",
+  location_changed: "Changed a location",
+  location_closed: "Closed a location",
+  location_reopened: "Reopened a location",
+  home_branch_changed: "Changed someone's branch",
   data_exported: "Downloaded all the data",
 }

@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { ChevronRight, ScanBarcode, Timer, Truck, Zap, type LucideIcon } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
+import { LocationFilter } from "@/components/location-filter"
+import type { PlaceFilter } from "@/lib/locations"
 import { SetupChecklist, type SetupStep } from "@/components/setup-checklist"
 import { EXPIRY_SOON_DAYS, describeExpiry } from "@/lib/expiry"
 import { formatDuration, formatLongDate, formatShortDate, formatTime, greeting, money, num, pesos, toYmd } from "@/lib/format"
@@ -20,7 +22,7 @@ export type DashboardData = {
   salesToday: { count: number; total: number } | null
   salesMonth: { count: number; total: number } | null
   pending: number
-  recent: { id: number; number: number; customer_name: string | null; total_price: number; date_completed: string }[]
+  recent: { id: number; number: number; customer_name: string | null; total_price: number; date_completed: string; location_id?: number | null }[]
   inventory: { products: number; units: number; cost_value: number; sell_value: number; low_stock: number; out_of_stock: number } | null
   low: { id: number; name: string; unit: string; current_stock: number }[]
   present: { id: number; clock_in: string; employees: { name: string } | null }[]
@@ -28,6 +30,8 @@ export type DashboardData = {
   kmMonth: number
   soon: { id: number; quantity: number; expires_on: string; lot: string | null; items: { name: string; unit: string } | null }[]
   expiredCount: number
+  /** The location filter, when the business has more than one location. */
+  place?: PlaceFilter | null
 }
 
 /** The dashboard's layout. The page (page.tsx) loads the numbers. */
@@ -38,6 +42,10 @@ export function DashboardView({ data }: { data: DashboardData }) {
   const sm = data.salesMonth
   const inv = data.inventory
   const products = inv?.products ?? 0
+  const place = data.place ?? null
+  // Links to the detail pages keep the location being shown.
+  const at = (href: string) => (place ? `${href}?at=${place.value}` : href)
+  const where = (id: number | null | undefined) => (place?.value === "all" && id ? place.names[id] : null)
 
   const actions: { href: string; label: string; icon: LucideIcon; show: boolean }[] = [
     { href: "/pos", label: "New sale", icon: ScanBarcode, show: sales },
@@ -63,20 +71,23 @@ export function DashboardView({ data }: { data: DashboardData }) {
           value={pesos(st?.total)}
           hint={plural(st?.count ?? 0, "sale")}
           rows={[
-            { label: "This month", value: `${pesos(sm?.total)} · ${plural(sm?.count ?? 0, "sale")}`, count: sm?.count ?? 0, href: "/sales" },
+            { label: "This month", value: `${pesos(sm?.total)} · ${plural(sm?.count ?? 0, "sale")}`, count: sm?.count ?? 0, href: at("/sales") },
             { label: "Pending orders", value: num(data.pending), count: data.pending, tone: "warn", href: "/orders" },
           ]}
         />
       ),
       panels: [
-        <Panel key="sales" title="Latest sales" link={{ href: "/sales", label: "Sales history" }}>
+        <Panel key="sales" title="Latest sales" link={{ href: at("/sales"), label: "Sales history" }}>
           {recent.length === 0 ? (
             <p className="text-sm faint py-4">No sales yet.</p>
           ) : (
             recent.map(o => (
               <div key={o.id} className="list-row text-sm">
                 <span className="faint tabular">#{o.number}</span>
-                <span className="flex-1 min-w-0 muted truncate">{o.customer_name || "Walk-in"}</span>
+                <span className="flex-1 min-w-0 muted truncate">
+                  {o.customer_name || "Walk-in"}
+                  {where(o.location_id) && <span className="faint"> · {where(o.location_id)}</span>}
+                </span>
                 <span className="faint text-xs whitespace-nowrap">{toYmd(o.date_completed) === today ? formatTime(o.date_completed) : formatShortDate(o.date_completed)}</span>
                 <span className="text-white font-semibold tabular text-right whitespace-nowrap">{money(o.total_price)}</span>
               </div>
@@ -101,19 +112,19 @@ export function DashboardView({ data }: { data: DashboardData }) {
           value={pesos(inv?.sell_value)}
           hint={data.canSeeCosts ? `${pesos(inv?.cost_value)} at cost` : "At selling price"}
           rows={[
-            { label: "Out of stock", value: num(out), count: out, tone: "bad", href: "/inventory/reorder" },
-            { label: "Running low", value: num(lowOnly), count: lowOnly, tone: "warn", href: "/inventory/reorder" },
+            { label: "Out of stock", value: num(out), count: out, tone: "bad", href: at("/inventory/reorder") },
+            { label: "Running low", value: num(lowOnly), count: lowOnly, tone: "warn", href: at("/inventory/reorder") },
             ...(expiry
-              ? [{ label: `Expiring in ${EXPIRY_SOON_DAYS} days`, value: num(expiringOnly), count: expiringOnly, tone: "warn" as const, href: "/inventory/expiry" }]
+              ? [{ label: `Expiring in ${EXPIRY_SOON_DAYS} days`, value: num(expiringOnly), count: expiringOnly, tone: "warn" as const, href: at("/inventory/expiry") }]
               : []),
             ...(expiry && expiredCount > 0
-              ? [{ label: "Already expired", value: num(expiredCount), count: expiredCount, tone: "bad" as const, href: "/inventory/expiry" }]
+              ? [{ label: "Already expired", value: num(expiredCount), count: expiredCount, tone: "bad" as const, href: at("/inventory/expiry") }]
               : []),
           ]}
         />
       ),
       panels: [
-        <Panel key="low" title="Running low" link={{ href: "/inventory/reorder", label: "Reorder list" }}>
+        <Panel key="low" title="Running low" link={{ href: at("/inventory/reorder"), label: "Reorder list" }}>
           {products === 0 ? (
             <p className="text-sm faint py-4">
               No products yet.{" "}
@@ -137,7 +148,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
         </Panel>,
         ...(expiry
           ? [
-              <Panel key="expiry" title="Expiring soon" link={{ href: "/inventory/expiry", label: "Expiry dates" }}>
+              <Panel key="expiry" title="Expiring soon" link={{ href: at("/inventory/expiry"), label: "Expiry dates" }}>
                 {soon.length === 0 ? (
                   <p className="text-sm faint py-4">Nothing expires in the next {EXPIRY_SOON_DAYS} days.</p>
                 ) : (
@@ -253,6 +264,12 @@ export function DashboardView({ data }: { data: DashboardData }) {
           ))
         ) : undefined}
       </PageHeader>
+
+      {place && !fresh && (
+        <div className="mb-5 -mt-1">
+          <LocationFilter path="/dashboard" value={place.value} locations={place.locations} />
+        </div>
+      )}
 
       {showSetup && <SetupChecklist steps={steps} businessName={businessName} />}
 

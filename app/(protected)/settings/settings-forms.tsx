@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Check, Copy, ImageUp, KeyRound, MoreHorizontal, ShieldCheck, ShieldOff, SlidersHorizontal, Trash2, UserPlus } from "lucide-react"
+import { Check, Copy, ImageUp, KeyRound, MapPin, MoreHorizontal, ShieldCheck, ShieldOff, SlidersHorizontal, Trash2, UserPlus } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
 import { ConfirmDialog, Modal } from "@/components/modal"
 import {
@@ -16,6 +16,10 @@ import { shrinkImage } from "@/lib/image"
 import type { Business, Role } from "@/lib/types"
 import { ALL_PERMISSIONS, PERMISSION_INFO, type Permission } from "@/lib/permissions"
 import { addUser, changePassword, removeLogo, removeUser, resetPassword, setAdmin, setPermissions, updateBusiness, uploadLogo, type BusinessInput } from "./actions"
+import { setHomeLocation } from "./location-actions"
+
+/** Open locations, for choosing where a login works (null when the business has just one). */
+export type LoginPlaces = { id: number; name: string; is_main: boolean }[] | null
 
 function useStatus() {
   const [busy, setBusy] = useState(false)
@@ -207,11 +211,33 @@ function LogoField({ name, logo, onChange }: { name: string; logo: string; onCha
   )
 }
 
-export type UserRow = { user_id: string; username: string; role: Role; created_at: string; permissions: string[] | null }
+export type UserRow = {
+  user_id: string
+  username: string
+  role: Role
+  created_at: string
+  permissions: string[] | null
+  /** Home branch (null: the main location). */
+  location_id: number | null
+}
 
-export function Users({ users, currentUserId, slug, staffLink }: { users: UserRow[]; currentUserId: string; slug: string; staffLink: string }) {
+export function Users({
+  users,
+  currentUserId,
+  slug,
+  staffLink,
+  places = null,
+}: {
+  users: UserRow[]
+  currentUserId: string
+  slug: string
+  staffLink: string
+  places?: LoginPlaces
+}) {
   const { busy, setBusy, status, setStatus } = useStatus()
   const [isAdmin, setIsAdmin] = useState(false)
+  const [placing, setPlacing] = useState<UserRow | null>(null)
+  const placeName = (id: number | null) => places?.find(l => l.id === id)?.name ?? places?.find(l => l.is_main)?.name ?? "the main location"
   const [resetting, setResetting] = useState<UserRow | null>(null)
   const [permitting, setPermitting] = useState<UserRow | null>(null)
   const [promoting, setPromoting] = useState<UserRow | null>(null)
@@ -222,7 +248,13 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
     const formEl = e.currentTarget
     const form = new FormData(formEl)
     setBusy(true)
-    const result = await addUser({ username: String(form.get("username")), password: String(form.get("password")), isAdmin })
+    const at = String(form.get("location") ?? "")
+    const result = await addUser({
+      username: String(form.get("username")),
+      password: String(form.get("password")),
+      isAdmin,
+      locationId: at ? Number(at) : null,
+    })
     setBusy(false)
     if (!result.ok) return setStatus({ ok: false, text: result.error })
     const name = String(form.get("username")).trim().toLowerCase()
@@ -247,6 +279,18 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
           <span className="label">Password</span>
           <input className="input" name="password" type="password" required minLength={8} placeholder="At least 8 characters" autoComplete="new-password" />
         </label>
+        {places && (
+          <label>
+            <span className="label">{isAdmin ? "Starts at" : "Works at"}</span>
+            <select className="input" name="location" defaultValue="">
+              {places.map(l => (
+                <option key={l.id} value={l.is_main ? "" : l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="check-row">
           <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} />
           <span>
@@ -278,6 +322,11 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
                   <p className="text-xs faint">
                     Logs in as <span className="mono muted">{u.username}@{slug}</span> · since {formatDate(u.created_at)}
                   </p>
+                  {places && (
+                    <p className="text-[0.7rem] faint truncate">
+                      {isAdmin ? "Starts at" : "Works at"} <span className="muted">{placeName(u.location_id)}</span>
+                    </p>
+                  )}
                   {u.role === "staff" && (
                     <p className="text-[0.7rem] faint truncate">
                       {u.permissions === null
@@ -302,6 +351,11 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
                           <SlidersHorizontal /> What they can do
                         </DropdownMenuItem>
                       )}
+                      {places && (
+                        <DropdownMenuItem onSelect={() => setPlacing(u)}>
+                          <MapPin /> {isAdmin ? "Where they start" : "Where they work"}
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onSelect={() => setResetting(u)}>
                         <KeyRound /> Reset password
                       </DropdownMenuItem>
@@ -321,6 +375,9 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
         </div>
       </div>
 
+      <Modal open={!!placing} onClose={() => setPlacing(null)} title={placing ? `Where ${placing.username} works` : "Branch"} width={420}>
+        {placing && places && <PlaceForm key={placing.user_id} user={placing} places={places} onClose={() => setPlacing(null)} />}
+      </Modal>
       <Modal open={!!resetting} onClose={() => setResetting(null)} title="Reset password" width={400}>
         {resetting && <ResetForm key={resetting.user_id} user={resetting} onClose={() => setResetting(null)} />}
       </Modal>
@@ -344,6 +401,53 @@ export function Users({ users, currentUserId, slug, staffLink }: { users: UserRo
         confirmLabel="Remove"
         action={() => removeUser(removing!.user_id)}
       />
+    </div>
+  )
+}
+
+function PlaceForm({ user, places, onClose }: { user: UserRow; places: NonNullable<LoginPlaces>; onClose: () => void }) {
+  const main = places.find(l => l.is_main)
+  const [chosen, setChosen] = useState<number | null>(places.some(l => l.id === user.location_id && !l.is_main) ? user.location_id : null)
+  const { busy, setBusy, status, setStatus } = useStatus()
+  const staff = user.role === "staff"
+
+  async function save() {
+    setBusy(true)
+    const result = await setHomeLocation(user.user_id, chosen)
+    setBusy(false)
+    if (!result.ok) return setStatus({ ok: false, text: result.error })
+    onClose()
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Status status={status} />
+      <p className="text-sm muted">
+        {staff
+          ? `${user.username} sells, takes stock in and closes the day only at this location.`
+          : `${user.username} is an ${user.role}, so they can switch locations any time. This is where they start.`}
+      </p>
+      <div className="flex flex-col gap-2" role="radiogroup" aria-label="Location">
+        {places.map(l => {
+          const value = l.is_main ? null : l.id
+          return (
+            <label key={l.id} className="check-row">
+              <input type="radio" name="place" checked={chosen === value} onChange={() => setChosen(value)} />
+              <span className="text-sm font-semibold text-white">
+                {l.name} {l.id === main?.id && <span className="faint font-normal">(main)</span>}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
     </div>
   )
 }

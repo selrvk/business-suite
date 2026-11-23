@@ -4,6 +4,8 @@ import { createContext, useContext } from "react"
 import type { CustomField, ProductOption } from "@/lib/features"
 import type { Permission } from "@/lib/permissions"
 
+export type PlaceSummary = { id: number; name: string; kind: "branch" | "warehouse" }
+
 type BusinessFeatures = {
   options: ProductOption[]
   customFields: CustomField[]
@@ -20,6 +22,8 @@ type BusinessFeatures = {
   seniorDefault: number
   /** BMBE or cooperative: no 5% on basic goods. */
   seniorBasicExempt: boolean
+  /** Branches and warehouses: multi is true when more than one location is open. */
+  locations: { multi: boolean; here: PlaceSummary; open: PlaceSummary[] }
 }
 
 const Context = createContext<BusinessFeatures>({
@@ -32,6 +36,7 @@ const Context = createContext<BusinessFeatures>({
   vatRegistered: false,
   seniorDefault: 5,
   seniorBasicExempt: false,
+  locations: { multi: false, here: { id: 0, name: "", kind: "branch" }, open: [] },
 })
 
 /** Gives every app page the business's product options and custom fields (set in the app layout). */

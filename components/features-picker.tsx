@@ -2,7 +2,7 @@
 
 import { Check } from "lucide-react"
 import { MODULE_INFO, config, type ModuleKey } from "@/lib/config"
-import { ALL_OPTIONS, BUSINESS_TYPES, OPTION_INFO, type BusinessType, type ProductOption } from "@/lib/features"
+import { ALL_OPTIONS, BUSINESS_TYPES, OPTION_INFO, PRODUCT_OPTIONS, type BusinessType, type ProductOption } from "@/lib/features"
 
 export type FeaturesValue = { businessType: BusinessType | null; modules: ModuleKey[]; options: ProductOption[] }
 
@@ -95,7 +95,7 @@ export function FeatureToggles({ value, onChange }: { value: FeaturesValue; onCh
       <div>
         <p className="label">Product details</p>
         <div className="grid sm:grid-cols-2 gap-2">
-          {ALL_OPTIONS.map(o => (
+          {PRODUCT_OPTIONS.map(o => (
             <Toggle
               key={o}
               on={inventory && value.options.includes(o)}
@@ -107,6 +107,18 @@ export function FeatureToggles({ value, onChange }: { value: FeaturesValue; onCh
           ))}
         </div>
         {!inventory && <p className="hint mt-2">Product details need Inventory turned on.</p>}
+      </div>
+      <div>
+        <p className="label">More than one store?</p>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <Toggle
+            on={inventory && value.options.includes("branches")}
+            disabled={!inventory}
+            label={OPTION_INFO.branches.label}
+            description={OPTION_INFO.branches.description}
+            onClick={() => toggleOption("branches")}
+          />
+        </div>
       </div>
     </div>
   )

@@ -1,13 +1,14 @@
-import { BadgePercent, Blocks, Building2, HardDriveDownload, Link2, ListChecks, Shield, User } from "lucide-react"
+import { BadgePercent, Blocks, Building2, HardDriveDownload, Link2, ListChecks, MapPin, Shield, User } from "lucide-react"
 import { DownloadAllData } from "@/components/download-all-data"
 import { ShowSetupButton } from "@/components/setup-buttons"
 import { PageHeader } from "@/components/page-header"
 import { MODULE_INFO, config } from "@/lib/config"
 import { OPTION_INFO, businessModules, customFields, type BusinessType, type ProductOption } from "@/lib/features"
-import type { Business } from "@/lib/types"
+import type { Business, Location } from "@/lib/types"
 import { FeaturesForm } from "./features-form"
+import { LocationsManager } from "./locations-form"
 import { SeniorForm, type CategoryRates } from "./senior-form"
-import { BusinessForm, CopyLink, PasswordForm, Users, type UserRow } from "./settings-forms"
+import { BusinessForm, CopyLink, PasswordForm, Users, type LoginPlaces, type UserRow } from "./settings-forms"
 
 /** The Settings layout. The page (page.tsx) loads the data. */
 export function SettingsView({
@@ -19,6 +20,9 @@ export function SettingsView({
   email,
   categories,
   staffLink,
+  locations = null,
+  units = {},
+  places = null,
 }: {
   isAdmin: boolean
   business: Business
@@ -28,6 +32,12 @@ export function SettingsView({
   email: string | null | undefined
   categories: CategoryRates[] | null
   staffLink: string
+  /** Every location, when the business has branches turned on. */
+  locations?: Location[] | null
+  /** Units in stock at each location. */
+  units?: Record<number, number>
+  /** Open locations to choose from for each login, when there's more than one. */
+  places?: LoginPlaces
 }) {
   const sales = businessModules(business).includes("sales")
   // The sections on this page, for the jump list at the top (or the side, on wide screens).
@@ -36,6 +46,7 @@ export function SettingsView({
       ? [
           { id: "business", label: "Business" },
           { id: "logins", label: "Logins" },
+          ...(locations ? [{ id: "locations", label: "Locations" }] : []),
           ...(sales ? [{ id: "senior", label: "Senior & PWD" }] : []),
           { id: "features", label: "Features" },
           ...(business.setup_hidden ? [{ id: "setup", label: "Setup guide" }] : []),
@@ -91,7 +102,19 @@ export function SettingsView({
                   </p>
                   <CopyLink url={staffLink} />
                 </div>
-                <Users users={users} currentUserId={userId} slug={business.slug} staffLink={staffLink} />
+                <Users users={users} currentUserId={userId} slug={business.slug} staffLink={staffLink} places={places} />
+              </div>
+            </section>
+          )}
+
+          {isAdmin && locations && (
+            <section className="card scroll-mt-20 md:scroll-mt-6" id="locations">
+              <div className="card-header">
+                <MapPin size={15} className="text-brand" aria-hidden />
+                <h2 className="display text-xl text-white">Branches &amp; warehouses</h2>
+              </div>
+              <div className="card-body">
+                <LocationsManager locations={locations} units={units} />
               </div>
             </section>
           )}

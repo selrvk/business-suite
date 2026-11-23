@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header"
 import { requireModule, requireUser } from "@/lib/auth"
 import { getSupabase } from "@/lib/supabase/server"
 import type { Order, OrderLine } from "@/lib/types"
+import { getWorkplace } from "@/lib/locations"
 import { OrdersList } from "./orders-list"
 
 export const metadata = { title: "Pending Orders" }
@@ -12,10 +13,13 @@ export const metadata = { title: "Pending Orders" }
 export default async function OrdersPage() {
   await requireModule("sales")
   const supabase = await getSupabase()
-  const [session, { data: orders, error }] = await Promise.all([
-    requireUser(),
-    supabase.from("orders").select("*").eq("status", "PENDING").order("date_created", { ascending: true }).limit(500),
-  ])
+  const session = await requireUser()
+  const workplace = await getWorkplace(session)
+  // With several locations, each branch confirms its own orders.
+  const query = supabase.from("orders").select("*").eq("status", "PENDING")
+  const { data: orders, error } = await (workplace.multi ? query.eq("location_id", workplace.here.id) : query)
+    .order("date_created", { ascending: true })
+    .limit(500)
   if (error) return <DbError error={error} />
 
   const { data: lines, error: linesError } = orders.length
@@ -29,7 +33,7 @@ export default async function OrdersPage() {
     <>
       <PageHeader
         title="Pending Orders"
-        subtitle="Orders saved for later (phone orders, deliveries, reservations). Confirming one takes its items out of stock."
+        subtitle={`Orders saved for later (phone orders, deliveries, reservations)${workplace.multi ? ` at ${workplace.here.name}` : ""}. Confirming one takes its items out of stock.`}
       >
         <Link href="/pos" className="btn btn-primary">
           <ScanBarcode size={15} /> New sale

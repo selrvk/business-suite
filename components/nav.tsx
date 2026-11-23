@@ -8,6 +8,7 @@ import { config } from "@/lib/config"
 import { BrandMark } from "./brand-mark"
 import { InstallAppButton } from "./install-app-button"
 import LogoutButton from "./logout-button"
+import { LocationSwitcher, type Place } from "./location-switcher"
 import { activeSection, menuSections } from "./menu"
 
 export default function Nav({
@@ -19,6 +20,7 @@ export default function Nav({
   modules,
   options,
   permissions,
+  place = null,
 }: {
   businessName: string
   logoUrl: string | null
@@ -28,8 +30,10 @@ export default function Nav({
   modules: string[]
   options: string[]
   permissions: string[]
+  /** Where this login works, when the business has more than one location. */
+  place?: Place | null
 }) {
-  const sections = menuSections(modules, options, permissions)
+  const sections = menuSections(modules, options, permissions, !!place)
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [openedAt, setOpenedAt] = useState(pathname)
@@ -117,7 +121,10 @@ export default function Nav({
         style={{ background: "var(--app-surface-2)", borderRight: "1px solid var(--app-border)" }}
       >
         <div className="flex flex-col gap-6">
-          <div className="px-5">{brand}</div>
+          <div className="px-5 flex flex-col gap-4">
+            {brand}
+            {place && <LocationSwitcher place={place} />}
+          </div>
           {links}
         </div>
         {footer}
@@ -156,6 +163,11 @@ export default function Nav({
                   <X size={20} />
                 </button>
               </div>
+              {place && (
+                <div className="px-5">
+                  <LocationSwitcher place={place} />
+                </div>
+              )}
               {links}
             </div>
             {footer}

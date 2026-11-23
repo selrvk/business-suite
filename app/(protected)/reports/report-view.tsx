@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { Info, PackageX, TrendingUp } from "lucide-react"
 import { DateRange } from "@/components/date-range"
+import { LocationFilter } from "@/components/location-filter"
+import type { PlaceFilter } from "@/lib/locations"
 import { ExportButton } from "@/components/export-button"
 import { Empty, PageHeader } from "@/components/page-header"
 import { formatDate, money, num } from "@/lib/format"
@@ -19,6 +21,7 @@ export function ReportView({
   slow,
   slowParam,
   categories,
+  place = null,
 }: {
   report: ProfitReport
   from: string
@@ -27,23 +30,27 @@ export function ReportView({
   slow: number
   slowParam?: string
   categories: boolean
+  /** The location filter, when the business has more than one location. */
+  place?: PlaceFilter | null
 }) {
   const profit = report.revenue - report.cost
   const { buckets, monthly } = chartBuckets(report.by_day, from, to < today ? to : today)
   const noCost = report.by_product.filter(p => p.cost === 0 && p.revenue > 0).length
   const showCategories = categories && report.by_category.some(c => c.category)
   const tiedUp = report.slow_movers.reduce((s, x) => s + x.value, 0)
-  const keep = { from, to }
+  const at = place ? String(place.value) : undefined
+  const keep = { from, to, ...(at ? { at } : {}) }
+  const placeName = place && place.value !== "all" ? place.names[place.value] : null
 
   return (
     <>
       <PageHeader
         title="Profit Report"
-        subtitle="What you sold minus what those goods cost you. Rent, wages and other expenses aren't included."
+        subtitle={`What you sold${placeName ? ` at ${placeName}` : ""} minus what those goods cost you. Rent, wages and other expenses aren't included.`}
       >
         {report.by_product.length > 0 && (
           <ExportButton
-            filename={`profit_${from}_to_${to}`}
+            filename={`profit_${placeName ? `${placeName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_` : ""}${from}_to_${to}`}
             sheet="Profit by product"
             rows={report.by_product.map(p => ({
               Product: p.name,
@@ -58,8 +65,9 @@ export function ReportView({
         )}
       </PageHeader>
 
-      <div className="mb-6">
-        <DateRange path="/reports" from={from} to={to} extra={{ slow: slowParam }} />
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <DateRange path="/reports" from={from} to={to} extra={{ slow: slowParam, at }} />
+        {place && <LocationFilter path="/reports" value={place.value} locations={place.locations} keep={{ from, to, slow: slowParam }} />}
       </div>
 
       <section className="card summary rise mb-4" data-lead="" aria-labelledby="report-profit">

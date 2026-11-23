@@ -18,7 +18,7 @@ export type ActivityRow = {
 
 const MONEY_KEYS = new Set(["amount", "total", "from", "to", "expected", "counted", "difference", "balance"])
 /** Actions whose numbers are counts of stock, not pesos. */
-const COUNT_ACTIONS = new Set(["stock_corrected", "batch_removed"])
+const COUNT_ACTIONS = new Set(["stock_corrected", "batch_removed", "stock_transferred"])
 
 /** Short, readable details: "₱60.00 → ₱65.00", "reason: Customer returned it". */
 function describe(row: ActivityRow) {

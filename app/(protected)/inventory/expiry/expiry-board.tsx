@@ -17,12 +17,28 @@ export type BatchRow = {
   received_at: string
   items: { name: string; unit: string; barcode: string | null } | null
   suppliers: { name: string } | null
+  location_id?: number | null
 }
 export type UndatedProduct = { id: number; name: string; unit: string; undated: number }
 
 type Filter = "expired" | "soon" | "watch" | "all"
 
-export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; undated: UndatedProduct[]; today: string }) {
+export function ExpiryBoard({
+  batches,
+  undated,
+  today,
+  datingAt = null,
+  places = null,
+}: {
+  batches: BatchRow[]
+  undated: UndatedProduct[]
+  today: string
+  /** Where dates added here go: a location id, null (a business with one location), or "all" (pick one first). */
+  datingAt?: number | "all" | null
+  /** Location names by id, when showing every location's batches. */
+  places?: Record<number, string> | null
+}) {
+  const where = (b: BatchRow) => (places && b.location_id ? places[b.location_id] : null)
   const [filter, setFilter] = useState<Filter>(() => (batches.some(b => b.expires_on && b.expires_on < today) ? "expired" : "soon"))
   const [removing, setRemoving] = useState<BatchRow | null>(null)
   const [editing, setEditing] = useState<BatchRow | null>(null)
@@ -69,11 +85,12 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
           <span>
             {num(undated.length)} product{undated.length === 1 ? " has" : "s have"} stock with no expiry date recorded.
           </span>
-          {canAdjust && (
+          {canAdjust && datingAt !== "all" && (
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDating(true)}>
               <CalendarPlus size={13} aria-hidden /> Add dates to stock on hand
             </button>
           )}
+          {canAdjust && datingAt === "all" && <span className="faint">Pick one location to add dates.</span>}
         </p>
       )}
 
@@ -96,6 +113,7 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
                 <tr key={b.id}>
                   <td>
                     <p className="text-white">{b.items?.name}</p>
+                    {where(b) && <p className="text-[0.72rem] faint">at {where(b)}</p>}
                     <p className="text-[0.72rem] faint">{b.lot ? `Lot ${b.lot}` : "No lot number"}</p>
                   </td>
                   <td className="num whitespace-nowrap">
@@ -150,7 +168,10 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
           return (
             <div key={b.id} className="flex items-center gap-3 pl-4 pr-1 py-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm text-white truncate">{b.items?.name}</p>
+                <p className="text-sm text-white truncate">
+                  {b.items?.name}
+                  {where(b) && <span className="faint text-xs"> · {where(b)}</span>}
+                </p>
                 <p className="text-xs faint truncate">
                   {num(b.quantity)} {b.items?.unit}
                   {b.lot ? ` · lot ${b.lot}` : ""}
@@ -191,7 +212,7 @@ export function ExpiryBoard({ batches, undated, today }: { batches: BatchRow[]; 
 
       <RemoveModal batch={removing} onClose={() => setRemoving(null)} />
       <EditModal batch={editing} onClose={() => setEditing(null)} />
-      <DateStockModal open={dating} products={undated} onClose={() => setDating(false)} />
+      <DateStockModal open={dating} products={undated} onClose={() => setDating(false)} locationId={datingAt === "all" ? null : datingAt} />
     </div>
   )
 }
@@ -296,15 +317,25 @@ function EditForm({ batch, onClose }: { batch: BatchRow; onClose: () => void }) 
 }
 
 /** For stock that was on hand before expiry dates were turned on. */
-function DateStockModal({ open, products, onClose }: { open: boolean; products: UndatedProduct[]; onClose: () => void }) {
+function DateStockModal({
+  open,
+  products,
+  onClose,
+  locationId,
+}: {
+  open: boolean
+  products: UndatedProduct[]
+  onClose: () => void
+  locationId: number | null
+}) {
   return (
     <Modal open={open} onClose={onClose} title="Add expiry dates to stock on hand" width={480}>
-      {open && <DateStockForm products={products} onClose={onClose} />}
+      {open && <DateStockForm products={products} onClose={onClose} locationId={locationId} />}
     </Modal>
   )
 }
 
-function DateStockForm({ products, onClose }: { products: UndatedProduct[]; onClose: () => void }) {
+function DateStockForm({ products, onClose, locationId }: { products: UndatedProduct[]; onClose: () => void; locationId: number | null }) {
   const [search, setSearch] = useState("")
   const [productId, setProductId] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
@@ -327,6 +358,7 @@ function DateStockForm({ products, onClose }: { products: UndatedProduct[]; onCl
       quantity: Number(form.get("quantity")),
       expires_on: String(form.get("expires_on") ?? ""),
       lot: String(form.get("lot") ?? ""),
+      location_id: locationId,
     })
     setBusy(false)
     if (!result.ok) return setStatus({ ok: false, text: result.error })

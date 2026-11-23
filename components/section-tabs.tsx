@@ -5,9 +5,19 @@ import { usePathname } from "next/navigation"
 import { activeSection, menuSections, tabActive, type MenuSection } from "./menu"
 
 /** The pages of the current menu section, as tabs along the top (only for sections with more than one page). */
-export function SectionTabs({ modules, options, permissions }: { modules: string[]; options: string[]; permissions: string[] }) {
+export function SectionTabs({
+  modules,
+  options,
+  permissions,
+  multi = false,
+}: {
+  modules: string[]
+  options: string[]
+  permissions: string[]
+  multi?: boolean
+}) {
   const pathname = usePathname()
-  return <SectionTabsView section={activeSection(menuSections(modules, options, permissions), pathname)} pathname={pathname} />
+  return <SectionTabsView section={activeSection(menuSections(modules, options, permissions, multi), pathname)} pathname={pathname} />
 }
 
 export function SectionTabsView({ section, pathname }: { section: MenuSection | null; pathname: string }) {

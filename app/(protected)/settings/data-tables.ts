@@ -3,11 +3,14 @@
 
 export const EXPORT_TABLES = [
   { table: "businesses", sheet: "Business", about: "Your business details and settings" },
-  { table: "members", sheet: "Logins", select: "username, role, permissions, created_at", order: "created_at", about: "Who can log in (no passwords)" },
+  { table: "members", sheet: "Logins", select: "username, role, permissions, location_id, created_at", order: "created_at", about: "Who can log in (no passwords)" },
+  { table: "locations", sheet: "Locations", about: "Your branches and warehouses" },
   { table: "items", sheet: "Products", select: "*, suppliers(name)", about: "Every product, with stock and prices" },
   { table: "suppliers", sheet: "Suppliers", about: "Your suppliers" },
+  { table: "stock_levels", sheet: "Stock by location", select: "*, items(name), locations(name)", order: "item_id", tiebreak: "location_id", about: "How much of each product is at each location" },
   { table: "stock_batches", sheet: "Expiry batches", select: "*, items(name)", about: "Stock by expiry date and lot" },
   { table: "stock_movements", sheet: "Stock log", select: "*, items(name)", about: "Every change to stock" },
+  { table: "transfers", sheet: "Transfers", about: "Stock moved between locations" },
   { table: "orders", sheet: "Sales", about: "Every sale and order" },
   { table: "order_item", sheet: "Sale lines", select: "*, items(name)", about: "The products in each sale" },
   { table: "customers", sheet: "Customers", about: "Customers and what they owe" },
@@ -21,6 +24,6 @@ export const EXPORT_TABLES = [
   { table: "fuel_logs", sheet: "Fuel", select: "*, vehicles(name)", about: "Fuel purchases" },
   { table: "activity_log", sheet: "Activity log", about: "Who did what" },
   { table: "payment_requests", sheet: "Billing", select: "period, amount, reference, note, status, created_at, reviewed_at", order: "created_at", about: `Payments you reported to us` },
-] as const satisfies readonly { table: string; sheet: string; select?: string; order?: string; about: string }[]
+] as const satisfies readonly { table: string; sheet: string; select?: string; order?: string; tiebreak?: string; about: string }[]
 
 export type ExportTable = (typeof EXPORT_TABLES)[number]["table"]

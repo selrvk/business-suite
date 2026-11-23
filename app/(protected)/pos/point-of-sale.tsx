@@ -21,7 +21,18 @@ export type PosCustomer = { id: number; name: string; balance: number; credit_li
 const METHODS = ["Cash", "GCash", "Maya", "Card", "Bank transfer", "Other"]
 const SHOWN = 24
 
-export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]; lowStock: number; customers?: PosCustomer[] }) {
+export function PointOfSale({
+  items,
+  lowStock,
+  customers = [],
+  place = null,
+}: {
+  items: Item[]
+  lowStock: number
+  customers?: PosCustomer[]
+  /** The branch selling, when the business has more than one location. */
+  place?: { id: number; name: string } | null
+}) {
   const can = useCan()
   const { vatRegistered, seniorDefault, seniorBasicExempt, isAdmin } = useBusinessFeatures()
   const [lineDiscounts, setLineDiscounts] = useState<Record<number, LineDiscount>>({})
@@ -197,6 +208,7 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
       discount: saleDiscount,
       customerId: customerMatch?.id ?? null,
       paidNow: credit ? paidNow : null,
+      locationId: place?.id ?? null,
     })
     setBusy(false)
     if (!result.ok) {
@@ -227,7 +239,10 @@ export function PointOfSale({ items, lowStock, customers = [] }: { items: Item[]
       {/* ── Products ── */}
       <section className="flex flex-col gap-4 min-w-0">
         <div className="flex items-end justify-between gap-3">
-          <h1 className="page-title">Point of Sale</h1>
+          <div className="min-w-0">
+            <h1 className="page-title">Point of Sale</h1>
+            {place && <p className="text-sm muted truncate">Selling at {place.name}</p>}
+          </div>
           <Link href="/orders" className="btn btn-secondary no-print">
             <ClipboardList size={14} /> Pending orders
           </Link>

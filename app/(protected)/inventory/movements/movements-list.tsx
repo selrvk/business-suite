@@ -10,6 +10,7 @@ export const REASONS: Record<StockReason, { label: string }> = {
   adjust: { label: "Correction" },
   return: { label: "Return" },
   out: { label: "Stock out" },
+  transfer: { label: "Transfer" },
 }
 
 export type Movement = {
@@ -20,14 +21,27 @@ export type Movement = {
   order_id: number | null
   created_by: string | null
   created_at: string
+  location_id?: number | null
   items: { name: string; unit: string } | null
   orders: { number: number } | null
 }
 
 
 /** The Stock Log's changes, one section per day. */
-export function MovementsList({ rows, names, today }: { rows: Movement[]; names: Record<string, string>; today: string }) {
+export function MovementsList({
+  rows,
+  names,
+  today,
+  places = null,
+}: {
+  rows: Movement[]
+  names: Record<string, string>
+  today: string
+  /** Location names by id, when showing several locations' changes. */
+  places?: Record<number, string> | null
+}) {
   const by = (r: Movement) => (r.created_by && names[r.created_by]) || null
+  const where = (r: Movement) => (places && r.location_id ? places[r.location_id] : null)
 
   // Changes grouped by day, newest first (they come sorted newest first).
   const days: { day: string; at: string; rows: Movement[] }[] = []
@@ -91,7 +105,10 @@ export function MovementsList({ rows, names, today }: { rows: Movement[]; names:
                   {g.rows.map(r => (
                     <tr key={r.id}>
                       <td className="whitespace-nowrap muted tabular">{formatTime(r.created_at)}</td>
-                      <td className="text-white">{r.items?.name ?? <span className="faint">(deleted product)</span>}</td>
+                      <td className="text-white">
+                        {r.items?.name ?? <span className="faint">(deleted product)</span>}
+                        {where(r) && <span className="block text-[0.72rem] faint">at {where(r)}</span>}
+                      </td>
                       <td className="num">{change(r)}</td>
                       <td className="muted">{REASONS[r.reason]?.label ?? r.reason}</td>
                       <td className="muted">{about(r) ?? <span className="faint">—</span>}</td>
@@ -118,6 +135,7 @@ export function MovementsList({ rows, names, today }: { rows: Movement[]; names:
                         <p className="text-sm text-white truncate">{r.items?.name ?? "(deleted product)"}</p>
                         <p className="text-xs faint truncate">
                           {formatTime(r.created_at)} · {REASONS[r.reason]?.label ?? r.reason}
+                          {where(r) && ` at ${where(r)}`}
                           {by(r) && ` · ${by(r)}`}
                           {about(r) && <> · {about(r)}</>}
                         </p>

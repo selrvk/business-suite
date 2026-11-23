@@ -6,6 +6,7 @@ import { access, getSession, isPlatformLogin, requireActive } from "@/lib/auth"
 import { BusinessFeaturesProvider } from "@/components/business-features"
 import { businessModules, customFields, type ProductOption } from "@/lib/features"
 import { formatDate, toYmd } from "@/lib/format"
+import { getWorkplace } from "@/lib/locations"
 
 export async function generateMetadata(): Promise<Metadata> {
   const session = await getSession()
@@ -16,6 +17,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const [session, platform] = await Promise.all([requireActive(), isPlatformLogin()])
   const { onTrial, daysLeft, endsAt } = access(session.business)
+  const workplace = await getWorkplace(session)
+  const summary = (l: { id: number; name: string; kind: "branch" | "warehouse" }) => ({ id: l.id, name: l.name, kind: l.kind })
+  const place = workplace.multi ? { here: summary(workplace.here), open: workplace.open.map(summary), canSwitch: workplace.canSwitch } : null
 
   return (
     <div className="md:flex min-h-screen">
@@ -28,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         modules={businessModules(session.business)}
         options={session.business.options ?? []}
         permissions={session.permissions}
+        place={place}
       />
       <div className="flex-1 min-w-0">
         {onTrial && session.isAdmin && (
@@ -44,7 +49,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         )}
         <main className="px-4 py-6 sm:px-6 md:px-10 md:py-9">
-          <SectionTabs modules={businessModules(session.business)} options={session.business.options ?? []} permissions={session.permissions} />
+          <SectionTabs
+            modules={businessModules(session.business)}
+            options={session.business.options ?? []}
+            permissions={session.permissions}
+            multi={workplace.multi}
+          />
           <BusinessFeaturesProvider
             value={{
               options: (session.business.options ?? []) as ProductOption[],
@@ -56,6 +66,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               vatRegistered: !!session.business.vat_registered,
               seniorDefault: session.business.senior_default ?? 5,
               seniorBasicExempt: !!session.business.senior_basic_exempt,
+              locations: { multi: workplace.multi, here: summary(workplace.here), open: workplace.open.map(summary) },
             }}
           >
             {children}

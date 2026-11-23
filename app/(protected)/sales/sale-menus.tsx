@@ -21,10 +21,13 @@ export function SalesMenu({
   status,
   rangeLabel,
   canDelete,
+  at = null,
 }: {
   from: string
   to: string
   status: "all" | "COMPLETED" | "CANCELLED"
+  /** The location shown (null: all of them). */
+  at?: { id: number; name: string } | null
   /** The dates in words, for the delete warning. */
   rangeLabel: string
   canDelete: boolean
@@ -35,7 +38,7 @@ export function SalesMenu({
   async function exportRows() {
     setState("busy")
     try {
-      const result = await exportSales(from, to, status)
+      const result = await exportSales(from, to, status, at?.id ?? null)
       if (!result.ok) throw new Error(result.error)
       await downloadExcel(result.data, `sales_${from}_to_${to}`, "Sales")
       setState("idle")
@@ -73,12 +76,13 @@ export function SalesMenu({
           title="Delete these records?"
           message={
             <>
-              This permanently deletes every completed and cancelled sale from {rangeLabel}. Stock levels don&apos;t change. Export
+              This permanently deletes every completed and cancelled sale{at ? ` at ${at.name}` : ""} from {rangeLabel}. Stock levels
+              don&apos;t change. Export
               first if you need a copy.
             </>
           }
           confirmLabel="Delete records"
-          action={() => deleteHistory(from, to)}
+          action={() => deleteHistory(from, to, at?.id ?? null)}
         />
       )}
     </>

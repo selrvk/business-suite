@@ -173,7 +173,7 @@ export type DaySummary = {
 /** To the business's owners: someone closed the day. */
 export async function notifyDayClosed(
   business: { id: string; name: string },
-  p: { day: string; by: string; summary: DaySummary; expected: number; counted: number; difference: number },
+  p: { day: string; by: string; summary: DaySummary; expected: number; counted: number; difference: number; place?: string | null },
 ) {
   const to = await ownerEmails(business.id)
   if (!to.length) return
@@ -184,10 +184,10 @@ export async function notifyDayClosed(
     p.difference === 0 ? "The cash drawer matched exactly." : `The cash drawer was ${p.difference > 0 ? "over" : "short"} by ${money(Math.abs(p.difference))}.`
   await sendEmail({
     to,
-    subject: `${business.name}: ${formatDate(p.day)} closed, ${money(s.net)} in sales`,
-    heading: `${formatDate(p.day)} is closed`,
+    subject: `${business.name}${p.place ? ` (${p.place})` : ""}: ${formatDate(p.day)} closed, ${money(s.net)} in sales`,
+    heading: `${formatDate(p.day)} is closed${p.place ? ` at ${p.place}` : ""}`,
     paragraphs: [
-      `${p.by} closed the day. ${s.sales} sale${s.sales === 1 ? "" : "s"} for ${money(s.net)}${s.discounts > 0 ? ` after ${money(s.discounts)} in discounts` : ""}.`,
+      `${p.by} closed the day${p.place ? ` at ${p.place}` : ""}. ${s.sales} sale${s.sales === 1 ? "" : "s"} for ${money(s.net)}${s.discounts > 0 ? ` after ${money(s.discounts)} in discounts` : ""}.`,
       ...(methods ? [`Paid by: ${methods}.`] : []),
       ...(s.credit_given > 0 ? [`On credit: ${money(s.credit_given)}.`] : []),
       ...(collected ? [`Collected from customers who owed: ${collected}.`] : []),

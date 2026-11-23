@@ -41,7 +41,14 @@ export async function updateBatch(id: number, input: { expires_on: string; lot: 
 }
 
 /** Records the expiry date of stock already on hand that has none yet. Doesn't change the stock. */
-export async function recordBatch(input: { item_id: number; quantity: number; expires_on: string; lot: string }): Promise<ActionResult> {
+export async function recordBatch(input: {
+  item_id: number
+  quantity: number
+  expires_on: string
+  lot: string
+  /** Where that stock is; null: where the person works. */
+  location_id?: number | null
+}): Promise<ActionResult> {
   const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   if (!Number.isInteger(input.quantity) || input.quantity <= 0) return { ok: false, error: "Enter how many." }
@@ -51,6 +58,7 @@ export async function recordBatch(input: { item_id: number; quantity: number; ex
     p_quantity: input.quantity,
     p_expires_on: input.expires_on || null,
     p_lot: input.lot.trim().slice(0, 60) || null,
+    p_location_id: input.location_id || null,
   })
   if (error) return { ok: false, error: dbMessage(error) }
   refresh()

@@ -4,14 +4,18 @@ import { config } from "@/lib/config"
 import { hasOption } from "@/lib/features"
 import { dayRange, monthStart, readRange, toYmd } from "@/lib/format"
 import { readProfitReport } from "@/lib/reports"
+import { getWorkplace, placeFilter, viewLocation } from "@/lib/locations"
 import { ReportView, SLOW_DAYS } from "./report-view"
 
 export const metadata = { title: "Profit Report" }
 
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; slow?: string }> }) {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; slow?: string; at?: string }> }) {
   await requireModule("sales")
-  const { supabase, business } = await requirePermission("see_costs")
+  const session = await requirePermission("see_costs")
+  const { supabase, business } = session
   const params = await searchParams
+  const workplace = await getWorkplace(session)
+  const view = viewLocation(workplace, params.at)
   const today = toYmd()
   const { from, to } = readRange(params, { from: monthStart(today), to: today })
   const range = dayRange(from, to)
@@ -22,6 +26,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     p_to: range.to.toISOString(),
     p_tz: config.timeZone,
     p_slow_days: slow,
+    p_business_id: null,
+    p_location_id: view?.id ?? null,
   })
   if (error) return <DbError error={error} />
 
@@ -34,6 +40,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       slow={slow}
       slowParam={params.slow}
       categories={hasOption(business, "categories")}
+      place={placeFilter(workplace, view)}
     />
   )
 }

@@ -7,6 +7,15 @@ import { dbMessage } from "@/lib/db"
 import { customFields, type CustomField } from "@/lib/features"
 import { MAX_IMPORT_ROWS, cleanImportRow, duplicateProblems, rowProblem, type ImportRow } from "@/lib/product-import"
 import type { ActionResult, StockReason } from "@/lib/types"
+import { getWorkplace, locationNames } from "@/lib/locations"
+import type { Session } from "@/lib/auth"
+
+/** " at Lipa branch", for the Activity Log, when the business has more than one location. */
+async function atPlace(session: Session, locationId: number | null | undefined) {
+  if (!locationId) return {}
+  const workplace = await getWorkplace(session)
+  return workplace.multi ? { at: locationNames(workplace)[locationId] ?? null } : {}
+}
 
 /**
  * Saves rows from the import page, all or nothing. Owners/admins only. The
@@ -15,6 +24,8 @@ import type { ActionResult, StockReason } from "@/lib/types"
 export async function importProducts(
   input: unknown[],
   setStock: boolean,
+  /** Where opening stock goes; null: the main location. */
+  locationId: number | null = null,
 ): Promise<ActionResult<{ added: number; updated: number; unchanged: number }>> {
   const g = await guard({ admin: true })
   if (!g.ok) return g
@@ -51,10 +62,16 @@ export async function importProducts(
       lot: r.lot,
     })),
     p_set_stock: setStock === true,
+    p_location_id: locationId || null,
   })
   if (error) return { ok: false, error: dbMessage(error) }
   const counts = data as { added: number; updated: number; unchanged: number }
-  await logActivity(g.session, "products_imported", `${rows.length} rows`, { added: counts.added, updated: counts.updated, set_stock: setStock === true })
+  await logActivity(g.session, "products_imported", `${rows.length} rows`, {
+    added: counts.added,
+    updated: counts.updated,
+    set_stock: setStock === true,
+    ...(await atPlace(g.session, locationId)),
+  })
   refresh()
   return { ok: true, data: counts }
 }
@@ -163,7 +180,7 @@ export async function productChoices(): Promise<ActionResult<{ suppliers: { id: 
   return { ok: true, data }
 }
 
-export async function addProduct(input: ProductInput): Promise<ActionResult<{ id: number }>> {
+export async function addProduct(input: ProductInput, locationId: number | null = null): Promise<ActionResult<{ id: number }>> {
   const g = await guard({ permission: "edit_products" })
   if (!g.ok) return g
   const product = clean(input, customFields(g.session.business))
@@ -182,6 +199,7 @@ export async function addProduct(input: ProductInput): Promise<ActionResult<{ id
       p_item_id: data.id,
       p_change: product.current_stock,
       p_reason: "initial",
+      p_location_id: locationId || null,
     })
     if (stockError) return { ok: false, error: dbMessage(stockError) }
     if (product.batch) {
@@ -190,12 +208,17 @@ export async function addProduct(input: ProductInput): Promise<ActionResult<{ id
         p_quantity: product.current_stock,
         p_expires_on: product.batch.expires_on,
         p_lot: product.batch.lot,
+        p_location_id: locationId || null,
       })
       if (batchError) return { ok: false, error: dbMessage(batchError) }
     }
   }
 
-  await logActivity(g.session, "product_added", product.fields.name, { price: product.fields.price_sell, stock: product.current_stock })
+  await logActivity(g.session, "product_added", product.fields.name, {
+    price: product.fields.price_sell,
+    stock: product.current_stock,
+    ...(product.current_stock > 0 ? await atPlace(g.session, locationId) : {}),
+  })
   refresh()
   return { ok: true, data: { id: data.id } }
 }
@@ -204,7 +227,7 @@ export async function addProduct(input: ProductInput): Promise<ActionResult<{ id
  * `stockShown` is the stock the form displayed when opened. Only the difference the
  * user typed is applied, so a sale made while the form was open isn't undone.
  */
-export async function updateProduct(id: number, input: ProductInput, stockShown: number): Promise<ActionResult> {
+export async function updateProduct(id: number, input: ProductInput, stockShown: number, locationId: number | null = null): Promise<ActionResult> {
   const g = await guard({ permission: "edit_products" })
   if (!g.ok) return g
   const product = clean(input, customFields(g.session.business))
@@ -242,9 +265,15 @@ export async function updateProduct(id: number, input: ProductInput, stockShown:
       p_change: change,
       p_reason: "adjust",
       p_note: "Corrected in product details",
+      p_location_id: locationId || null,
     })
     if (stockError) return { ok: false, error: dbMessage(stockError) }
-    await logActivity(g.session, "stock_corrected", fields.name as string, { from: stockShown, to: product.current_stock, change })
+    await logActivity(g.session, "stock_corrected", fields.name as string, {
+      from: stockShown,
+      to: product.current_stock,
+      change,
+      ...(await atPlace(g.session, locationId)),
+    })
   }
 
   refresh()
@@ -262,20 +291,33 @@ export async function deleteProduct(id: number): Promise<ActionResult> {
   return { ok: true, data: null }
 }
 
-export async function adjustStock(id: number, change: number, reason: StockReason, note: string): Promise<ActionResult<number>> {
+export async function adjustStock(
+  id: number,
+  change: number,
+  reason: StockReason,
+  note: string,
+  locationId: number | null = null,
+): Promise<ActionResult<number>> {
   const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   if (!Number.isInteger(change) || change === 0) return { ok: false, error: "Enter a whole number other than zero." }
+  if (reason === "transfer") return { ok: false, error: "Move stock between locations with Transfers." }
   const { data, error } = await g.session.supabase.rpc("adjust_stock", {
     p_item_id: id,
     p_change: change,
     p_reason: reason,
     p_note: note,
+    p_location_id: locationId || null,
   })
   if (error) return { ok: false, error: dbMessage(error) }
   if (reason === "adjust") {
     const { data: item } = await g.session.supabase.from("items").select("name").eq("id", id).maybeSingle()
-    await logActivity(g.session, "stock_corrected", item?.name ?? `Product ${id}`, { change, stock: data as number, note: note || null })
+    await logActivity(g.session, "stock_corrected", item?.name ?? `Product ${id}`, {
+      change,
+      stock: data as number,
+      note: note || null,
+      ...(await atPlace(g.session, locationId)),
+    })
   }
   refresh()
   return { ok: true, data: data as number }
@@ -284,7 +326,13 @@ export async function adjustStock(id: number, change: number, reason: StockReaso
 export type ReceiveLine = { item_id: number; quantity: number; expires_on?: string; lot?: string }
 
 /** Stock In: a delivery, optionally from a supplier, with expiry dates and lot numbers per line. */
-export async function receiveStock(lines: ReceiveLine[], note: string, supplierId: number | null = null): Promise<ActionResult<number>> {
+export async function receiveStock(
+  lines: ReceiveLine[],
+  note: string,
+  supplierId: number | null = null,
+  /** Where the delivery arrived; null: where the person works. */
+  locationId: number | null = null,
+): Promise<ActionResult<number>> {
   const g = await guard()
   if (!g.ok) return g
   if (!lines.length) return { ok: false, error: "Scan or add at least one product." }
@@ -294,7 +342,12 @@ export async function receiveStock(lines: ReceiveLine[], note: string, supplierI
   }
   const items = lines.map(l => ({ item_id: l.item_id, quantity: l.quantity, expires_on: l.expires_on || null, lot: l.lot?.trim() || null }))
   const supplier = Number.isInteger(supplierId) && supplierId! > 0 ? supplierId : null
-  const { data, error } = await g.session.supabase.rpc("receive_stock", { p_items: items, p_note: note, p_supplier_id: supplier })
+  const { data, error } = await g.session.supabase.rpc("receive_stock", {
+    p_items: items,
+    p_note: note,
+    p_supplier_id: supplier,
+    p_location_id: locationId || null,
+  })
   if (error) return { ok: false, error: dbMessage(error) }
   refresh()
   return { ok: true, data: data as number }
@@ -308,7 +361,7 @@ export type ScanResult =
  * Quick Scan: one scan, one stock change, saved immediately. Skips page
  * revalidation on purpose so rapid scanning stays fast.
  */
-export async function quickScan(code: string, change: number, note: string): Promise<ActionResult<ScanResult>> {
+export async function quickScan(code: string, change: number, note: string, locationId: number | null = null): Promise<ActionResult<ScanResult>> {
   const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   if (!Number.isInteger(change) || change === 0 || Math.abs(change) > 99999)
@@ -318,13 +371,14 @@ export async function quickScan(code: string, change: number, note: string): Pro
     p_change: change,
     p_reason: change > 0 ? "receive" : "out",
     p_note: note,
+    p_location_id: locationId || null,
   })
   if (error) return { ok: false, error: dbMessage(error) }
   return { ok: true, data: data as ScanResult }
 }
 
 /** Reverses a Quick Scan (logged as a correction). */
-export async function undoScan(itemId: number, change: number): Promise<ActionResult<number>> {
+export async function undoScan(itemId: number, change: number, locationId: number | null = null): Promise<ActionResult<number>> {
   const g = await guard({ permission: "adjust_stock" })
   if (!g.ok) return g
   const { data, error } = await g.session.supabase.rpc("adjust_stock", {
@@ -332,7 +386,46 @@ export async function undoScan(itemId: number, change: number): Promise<ActionRe
     p_change: -change,
     p_reason: "adjust",
     p_note: "Undo quick scan",
+    p_location_id: locationId || null,
   })
   if (error) return { ok: false, error: dbMessage(error) }
   return { ok: true, data: data as number }
+}
+
+/**
+ * Transfers: moves stock from one location to another in one go. Expiry
+ * dates travel with it (soonest first). Needs the "correct stock" permission;
+ * staff can only send from their own branch.
+ */
+export async function transferStock(
+  fromId: number,
+  toId: number,
+  lines: { item_id: number; quantity: number }[],
+  note: string,
+): Promise<ActionResult<{ products: number; units: number }>> {
+  const g = await guard({ permission: "adjust_stock" })
+  if (!g.ok) return g
+  if (!Number.isInteger(fromId) || !Number.isInteger(toId) || fromId === toId) return { ok: false, error: "Pick two different locations." }
+  if (!Array.isArray(lines) || !lines.length) return { ok: false, error: "Scan or add at least one product." }
+  if (lines.length > 500) return { ok: false, error: "Move up to 500 products at a time." }
+  for (const l of lines)
+    if (!Number.isInteger(l?.item_id) || !Number.isInteger(l?.quantity) || l.quantity < 1 || l.quantity > 999999)
+      return { ok: false, error: "Quantities must be whole numbers, at least 1." }
+
+  const { data, error } = await g.session.supabase.rpc("transfer_stock", {
+    p_from: fromId,
+    p_to: toId,
+    p_items: lines.map(l => ({ item_id: l.item_id, quantity: l.quantity })),
+    p_note: note.trim().slice(0, 200) || null,
+  })
+  if (error) return { ok: false, error: dbMessage(error) }
+  const result = data as { id: number; products: number; units: number }
+  const names = locationNames(await getWorkplace(g.session))
+  await logActivity(g.session, "stock_transferred", `${names[fromId] ?? "?"} → ${names[toId] ?? "?"}`, {
+    products: result.products,
+    units: result.units,
+    note: note.trim() || null,
+  })
+  refresh()
+  return { ok: true, data: { products: result.products, units: result.units } }
 }
